@@ -843,7 +843,7 @@ const analysisTeam = (() => {
 
   const P = {
     selector: (theme, period, style) =>
-      `당신은 국내 주식 종목 선정 전문가입니다.\n테마/키워드: ${theme} | 투자기간: ${period} | 투자성향: ${style}\n\n위 조건에 부합하는 현재 투자 매력도가 높은 국내 상장 종목 1개를 선정하세요.\n반드시 아래 형식으로만 출력하세요 (다른 텍스트 없음):\n종목명: {회사명}\n종목코드: {6자리 숫자}\n시장: J 또는 Q\n선정이유: {1~2줄}`,
+      `당신은 국내 주식 종목 선정 전문가입니다.\n테마/키워드: ${theme} | 투자기간: ${period} | 투자성향: ${style}\n\n위 조건에 부합하는 현재 투자 매력도가 높은 국내 상장 종목 1개를 선정하세요.\n반드시 아래 형식으로만 출력하세요 (설명 없이 형식만):\n종목명: 삼성전자\n종목코드: 005930\n시장코드: J\n선정이유: (1~2줄)\n\n※ 시장코드는 코스피면 J, 코스닥이면 Q 알파벳 한 글자만 입력`,
     m1: (style, period) =>
       `당신은 국내 주식 시장/뉴스/공시 분석가(팀원1)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\n실시간 데이터를 바탕으로 뉴스·이슈·산업 동향을 분석하세요. bullet point로 간결하게 출력하고, 마지막에 반드시 "투자 매력도: {0~100}점" 형태로 수치화해 출력하세요.`,
     m2: (style, period) =>
@@ -884,11 +884,17 @@ const analysisTeam = (() => {
       const selResp = await aiService.callAI(P.selector(theme, period, riskStyle), '', apiKey);
       const codeM = selResp.match(/종목코드:\s*(\d{6})/);
       const nameM = selResp.match(/종목명:\s*(.+)/);
-      const mktM  = selResp.match(/시장:\s*([JQ])/);
+      const mktM  = selResp.match(/시장(?:코드)?:\s*([JQ])/i);
       if (!codeM) throw new Error('종목 선정 실패 — 다시 시도해주세요.');
       selTicker = codeM[1].trim();
       selName   = nameM ? nameM[1].trim() : selTicker;
-      selMarket = mktM  ? mktM[1].trim()  : market;
+      // 시장코드 파싱: 직접 매칭 → 코스피/코스닥 키워드 → 기본값 J
+      let detectedMkt = mktM ? mktM[1].toUpperCase() : null;
+      if (!detectedMkt) {
+        if (/코스닥|KOSDAQ/i.test(selResp)) detectedMkt = 'Q';
+        else if (/코스피|KOSPI/i.test(selResp)) detectedMkt = 'J';
+      }
+      selMarket = (detectedMkt === 'J' || detectedMkt === 'Q') ? detectedMkt : 'J';
       onProgress(0, `${selName}(${selTicker}) 선정`, 'done');
     } else {
       onProgress(0, `${selTicker} — 직접 입력`, 'done');
