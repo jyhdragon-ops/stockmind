@@ -842,6 +842,8 @@ const aiService = (() => {
 const analysisTeam = (() => {
 
   const P = {
+    selector: (theme, period, style) =>
+      `당신은 국내 주식 종목 선정 전문가입니다.\n테마/키워드: ${theme} | 투자기간: ${period} | 투자성향: ${style}\n\n위 조건에 부합하는 현재 투자 매력도가 높은 국내 상장 종목 1개를 선정하세요.\n반드시 아래 형식으로만 출력하세요 (다른 텍스트 없음):\n종목명: {회사명}\n종목코드: {6자리 숫자}\n시장: J 또는 Q\n선정이유: {1~2줄}`,
     m1: (style, period) =>
       `당신은 국내 주식 시장/뉴스/공시 분석가(팀원1)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\n실시간 데이터를 바탕으로 뉴스·이슈·산업 동향을 분석하세요. bullet point로 간결하게 출력하고, 마지막에 반드시 "투자 매력도: {0~100}점" 형태로 수치화해 출력하세요.`,
     m2: (style, period) =>
@@ -874,56 +876,76 @@ const analysisTeam = (() => {
 
   async function runDiscovery({ ticker, market, stockName, theme, period, riskStyle, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
     let ctx = '', priceData = null, chartData = null;
+    let selTicker = ticker, selMarket = market, selName = stockName;
 
-    if (ticker && appkey && appsecret && proxyUrl) {
-      onProgress(0, '실시간 데이터 수집 중...');
-      const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
-      priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
-      await new Promise(r => setTimeout(r, 700));
-      chartData  = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
-      ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
-      onProgress(0, '데이터 수집 완료', 'done');
+    // 단계 0: 종목 선정 (ticker 없을 때 AI가 자동 선정)
+    if (!selTicker) {
+      onProgress(0, '종목 선정 중...');
+      const selResp = await aiService.callAI(P.selector(theme, period, riskStyle), '', apiKey);
+      const codeM = selResp.match(/종목코드:\s*(\d{6})/);
+      const nameM = selResp.match(/종목명:\s*(.+)/);
+      const mktM  = selResp.match(/시장:\s*([JQ])/);
+      if (!codeM) throw new Error('종목 선정 실패 — 다시 시도해주세요.');
+      selTicker = codeM[1].trim();
+      selName   = nameM ? nameM[1].trim() : selTicker;
+      selMarket = mktM  ? mktM[1].trim()  : market;
+      onProgress(0, `${selName}(${selTicker}) 선정`, 'done');
     } else {
-      onProgress(0, '종목코드 없음 — AI 학습 데이터 기반 분석', 'done');
+      onProgress(0, `${selTicker} — 직접 입력`, 'done');
     }
 
-    const base = `종목: ${stockName || ticker || '미지정'} | 테마: ${theme} | 투자기간: ${period} | 성향: ${riskStyle}`;
+    // 단계 1: 실시간 데이터 수집
+    if (selTicker && appkey && appsecret && proxyUrl) {
+      onProgress(1, '실시간 데이터 수집 중...');
+      const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+      priceData = await stockDataService.getCurrentPrice(selTicker, selMarket, token, appkey, appsecret, proxyUrl);
+      await new Promise(r => setTimeout(r, 700));
+      chartData  = await stockDataService.getChartData(selTicker, selMarket, token, appkey, appsecret, proxyUrl);
+      ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
+      onProgress(1, '데이터 수집 완료', 'done');
+    } else {
+      onProgress(1, 'KIS 미설정 — AI 학습 데이터 기반', 'done');
+    }
 
-    onProgress(1, '팀원1 시장/뉴스 분석 중...');
+    const base = `종목: ${selName || selTicker} | 테마: ${theme} | 투자기간: ${period} | 성향: ${riskStyle}`;
+
+    onProgress(2, '팀원1 시장/뉴스 분석 중...');
     const r1 = await aiService.callAI(P.m1(riskStyle, period), ctx + base, apiKey);
-    onProgress(1, '팀원1 완료', 'done');
+    onProgress(2, '팀원1 완료', 'done');
 
-    onProgress(2, '팀원2 기술적 분석 중...');
+    onProgress(3, '팀원2 기술적 분석 중...');
     const r2 = await aiService.callAI(P.m2(riskStyle, period), ctx + `팀원1:\n${r1}`, apiKey);
-    onProgress(2, '팀원2 완료', 'done');
+    onProgress(3, '팀원2 완료', 'done');
 
-    onProgress(3, '팀원3 재무 분석 중...');
+    onProgress(4, '팀원3 재무 분석 중...');
     const r3 = await aiService.callAI(P.m3(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
-    onProgress(3, '팀원3 완료', 'done');
+    onProgress(4, '팀원3 완료', 'done');
 
-    onProgress(4, '팀원4 매매전략 수립 중...');
+    onProgress(5, '팀원4 매매전략 수립 중...');
     const r4 = await aiService.callAI(P.m4(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
-    onProgress(4, '팀원4 완료', 'done');
+    onProgress(5, '팀원4 완료', 'done');
 
-    onProgress(5, '팀원6 리스크 검토 중...');
+    onProgress(6, '팀원6 리스크 검토 중...');
     const r6 = await aiService.callAI(P.m6(), `${ctx}팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`, apiKey);
-    onProgress(5, '팀원6 완료', 'done');
+    onProgress(6, '팀원6 완료', 'done');
 
     if (/최종 판정[^\n]*탈락/.test(r6)) {
-      onProgress(6, '팀장 생략 — 탈락 판정', 'error');
+      onProgress(7, '팀장 생략 — 탈락 판정', 'error');
       return {
         report: `## 분석 결과: 투자 부적합\n\n팀원6이 치명적 약점을 발견하여 분석을 중단합니다.\n\n${r6}`,
         member4Output: r4, eliminated: true, priceData, chartData,
+        ticker: selTicker, market: selMarket, stockName: selName,
       };
     }
 
-    onProgress(6, '팀장 최종 리포트 작성 중...');
+    onProgress(7, '팀장 최종 리포트 작성 중...');
     const rL = await aiService.callAI(P.leader(riskStyle),
       `${ctx}${base}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}\n\n팀원6:\n${r6}`,
       apiKey);
-    onProgress(6, '분석 완료', 'done');
+    onProgress(7, '분석 완료', 'done');
 
-    return { report: rL, member4Output: r4, eliminated: false, priceData, chartData };
+    return { report: rL, member4Output: r4, eliminated: false, priceData, chartData,
+             ticker: selTicker, market: selMarket, stockName: selName };
   }
 
   async function runResponse({ ticker, market, stockName, avgPrice, totalQty, pnlRate, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
@@ -972,11 +994,11 @@ const ui = (() => {
   let _pfPrices = {};   // { 'J_005930': priceData } — 세션 내 캐시
 
   let _discResult      = null;
-  let _discStepState   = Array(7).fill('pending');
+  let _discStepState   = Array(8).fill('pending');
   let _respStepState   = Array(6).fill('pending');
   let _analyzing       = false;
 
-  const DISC_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
+  const DISC_LABELS = ['종목 선정','데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
   const RESP_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원5 대응방안'];
 
   function _msg(id, text, type) {
@@ -1994,7 +2016,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     document.getElementById('disc-msg').classList.remove('show');
     document.getElementById('discover-result').style.display = 'none';
     document.getElementById('discover-progress').style.display = 'block';
-    _discStepState = Array(7).fill('pending');
+    _discStepState = Array(8).fill('pending');
     _renderSteps('disc-steps', DISC_LABELS, _discStepState);
 
     try {
@@ -2007,12 +2029,12 @@ ${prevHistory || '없음 (첫 검증)'}`;
         },
       });
 
-      const recData = analysisTeam.parseRecData(result.member4Output, ticker, ticker || theme);
-      recData.market = market;
-      _discResult = { ...result, recData, ticker, market };
+      const recData = analysisTeam.parseRecData(result.member4Output, result.ticker, result.stockName || result.ticker || theme);
+      recData.market = result.market;
+      _discResult = { ...result, recData };
 
       await dbService.put('analysis_history', {
-        type: '종목발굴', target: ticker || theme,
+        type: '종목발굴', target: result.stockName || result.ticker || theme,
         summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
         full_report: result.report,
         stock_data: result.priceData ? JSON.stringify({ priceData: result.priceData, chartData: result.chartData }) : null,
@@ -2024,7 +2046,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
         DOMPurify.sanitize(marked.parse(result.report));
       document.getElementById('discover-result').style.display = 'block';
       document.getElementById('btn-disc-verify').style.display = result.eliminated ? 'none' : '';
-      document.getElementById('btn-disc-add-portfolio').style.display = (ticker && !result.eliminated) ? '' : 'none';
+      document.getElementById('btn-disc-add-portfolio').style.display = (result.ticker && !result.eliminated) ? '' : 'none';
     } catch (err) {
       const txt = err.message === 'QUOTA_EXCEEDED'
         ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
