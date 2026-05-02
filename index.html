@@ -1,0 +1,2344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockMind</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0f0f;
+      --bg-card:  #1a1a2e;
+      --bg-input: #16213e;
+      --accent:   #4a9eff;
+      --rise:     #ff4757;
+      --fall:     #2ed573;
+      --text:     #e0e0e0;
+      --sub:      #888888;
+      --border:   #2a2a4a;
+      --sidebar:  220px;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    .app { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: var(--sidebar);
+      background: var(--bg-input);
+      border-right: 1px solid var(--border);
+      position: fixed;
+      top: 0; left: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      z-index: 100;
+    }
+
+    .logo {
+      padding: 22px 20px 18px;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: -.3px;
+      user-select: none;
+    }
+
+    .sidebar-nav { flex: 1; padding: 10px 0; overflow-y: auto; }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 20px;
+      margin: 2px 8px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--sub);
+      font-size: 14px;
+      transition: background .15s, color .15s;
+      user-select: none;
+    }
+    .nav-item:hover { background: rgba(74,158,255,.08); color: var(--text); }
+    .nav-item.active { background: rgba(74,158,255,.15); color: var(--accent); font-weight: 600; }
+    .nav-icon { font-size: 17px; flex-shrink: 0; }
+
+    .main {
+      margin-left: var(--sidebar);
+      flex: 1;
+      padding: 28px 28px 48px;
+      max-width: calc(var(--sidebar) + 860px);
+      min-width: 0;
+    }
+
+    /* ── Tab switching ── */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { font-size: 22px; font-weight: 700; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.3);
+    }
+    .card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--sub);
+      margin-bottom: 16px;
+    }
+
+    /* ── Forms ── */
+    .form-group { margin-bottom: 14px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-group label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 6px; }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 13px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    select option { background: var(--bg-card); }
+    textarea { resize: vertical; min-height: 80px; }
+    input::placeholder, textarea::placeholder { color: var(--sub); opacity: .6; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: 600;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover:not(:disabled) { opacity: .85; }
+    .btn:active:not(:disabled) { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary   { background: var(--accent); color: #fff; }
+    .btn-danger    { background: var(--rise);   color: #fff; }
+    .btn-secondary { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); }
+
+    /* ── Messages ── */
+    .msg { display: none; margin-top: 10px; padding: 10px 14px; border-radius: 8px; font-size: 13px; }
+    .msg.show { display: block; }
+    .msg-success { background: rgba(46,213,115,.12); color: var(--fall); border: 1px solid rgba(46,213,115,.25); }
+    .msg-error   { background: rgba(255,71,87,.12);  color: var(--rise); border: 1px solid rgba(255,71,87,.25); }
+    .msg-info    { background: rgba(74,158,255,.1);  color: var(--accent); border: 1px solid rgba(74,158,255,.2); }
+
+    /* ── Banner (global) ── */
+    .banner { display: none; padding: 13px 18px; border-radius: 10px; margin-bottom: 22px; font-size: 13px; line-height: 1.5; }
+    .banner.show { display: block; }
+    .banner-warn { background: rgba(255,200,0,.1); color: #ffc107; border: 1px solid rgba(255,200,0,.25); }
+
+    /* ── Token badge ── */
+    .token-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .badge-valid   { background: rgba(46,213,115,.12); color: var(--fall); }
+    .badge-expired { background: rgba(255,71,87,.12);  color: var(--rise); }
+    .badge-none    { background: var(--bg-input); color: var(--sub); border: 1px solid var(--border); }
+
+    /* ── Misc ── */
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+    .card.danger { border-color: rgba(255,71,87,.35); }
+    .card.danger .card-title { color: #ff6b7a; }
+
+    /* ── Placeholder for unbuilt tabs ── */
+    .placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; text-align: center; }
+    .placeholder .ph-icon { font-size: 52px; margin-bottom: 18px; opacity: .5; }
+    .placeholder h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .placeholder p  { font-size: 13px; color: var(--sub); max-width: 320px; }
+
+    /* ── Portfolio tab ── */
+    .market-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(74,158,255,.15); color: var(--accent); }
+    .pf-empty { text-align: center; padding: 60px 20px; color: var(--sub); }
+    .pf-empty .pf-empty-icon { font-size: 48px; margin-bottom: 14px; opacity: .4; }
+    .pf-empty p { font-size: 14px; line-height: 1.8; }
+    .pf-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .pf-name { font-size: 17px; font-weight: 700; }
+    .pf-code { font-size: 12px; color: var(--sub); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+    .pf-price-block { text-align: right; flex-shrink: 0; }
+    .pf-current-price { font-size: 20px; font-weight: 700; }
+    .pf-change { font-size: 12px; margin-top: 2px; }
+    .pf-change.rise { color: var(--rise); }
+    .pf-change.fall { color: var(--fall); }
+    .pf-no-price { font-size: 12px; color: var(--sub); }
+    .pf-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin: 8px 0; }
+    .pf-stat-label { font-size: 11px; color: var(--sub); margin-bottom: 3px; }
+    .pf-stat-value { font-size: 14px; font-weight: 600; }
+    .pf-stat-value.rise { color: var(--rise); }
+    .pf-stat-value.fall { color: var(--fall); }
+    .pf-history { margin-top: 12px; }
+    .pf-history-title { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+    .pf-history-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .pf-history-row:last-child { border-bottom: none; }
+    .pf-history-info { font-size: 13px; }
+    .pf-history-date { font-size: 12px; color: var(--sub); margin-top: 1px; }
+    .pf-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+    .summary-item { text-align: center; }
+    .summary-label { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+    .summary-value { font-size: 22px; font-weight: 700; }
+    .summary-sub { font-size: 12px; color: var(--sub); margin-top: 3px; }
+    .summary-value.rise { color: var(--rise); } .summary-value.fall { color: var(--fall); }
+    .summary-sub.rise  { color: var(--rise); } .summary-sub.fall  { color: var(--fall); }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .form-grid-2 { grid-template-columns: 1fr; } }
+
+    /* ── Radio group ── */
+    .radio-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+    .radio-item { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 7px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; transition: border-color .15s, background .15s; user-select: none; }
+    .radio-item:has(input:checked) { border-color: var(--accent); background: rgba(74,158,255,.1); color: var(--accent); }
+    .radio-item input[type=radio] { display: none; }
+
+    /* ── Analysis steps ── */
+    .disc-steps { display: flex; flex-direction: column; gap: 6px; }
+    .disc-step { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 8px; background: rgba(255,255,255,.03); font-size: 13px; color: var(--sub); }
+    .disc-step-icon { width: 20px; text-align: center; flex-shrink: 0; }
+    .disc-step.active { background: rgba(74,158,255,.1); color: var(--accent); }
+    .disc-step.done   { background: rgba(46,213,115,.07); color: var(--fall); }
+    .disc-step.error  { background: rgba(255,71,87,.07);  color: var(--rise); }
+
+    /* ── Modal ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 200; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.show { display: flex; }
+    .modal-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; width: 100%; max-width: 460px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
+
+    /* ── Verify ── */
+    .verify-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 14px; }
+    .verify-stat-label { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; text-align: center; }
+    .verify-stat-value { font-size: 22px; font-weight: 700; text-align: center; }
+    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .status-대기   { background: rgba(255,255,255,.07); color: var(--sub); }
+    .status-진행중 { background: rgba(74,158,255,.15);  color: var(--accent); }
+    .status-성공   { background: rgba(255,71,87,.12);   color: var(--rise); }
+    .status-실패   { background: rgba(46,213,115,.12);  color: var(--fall); }
+    .status-손절   { background: rgba(255,200,0,.12);   color: #ffc107; }
+    .market-closed { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(255,200,0,.12); color: #ffc107; margin-left: 4px; vertical-align: middle; }
+    .verify-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .verify-table th { text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--sub); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .verify-table td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+    .verify-table tr:last-child td { border-bottom: none; }
+    .verify-table tr:hover td { background: rgba(255,255,255,.02); }
+    .pending-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .pending-row:last-child { border-bottom: none; }
+
+    /* ── History ── */
+    .hist-item { padding: 14px 18px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .15s; }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-item:hover { background: rgba(255,255,255,.03); }
+    .hist-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+    .hist-item-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .hist-type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .hist-type-발굴   { background: rgba(74,158,255,.15);  color: var(--accent); }
+    .hist-type-대응   { background: rgba(255,71,87,.12);   color: var(--rise); }
+    .hist-type-브리핑 { background: rgba(46,213,115,.12);  color: var(--fall); }
+    .hist-target { font-size: 14px; font-weight: 600; }
+    .hist-date   { font-size: 12px; color: var(--sub); flex-shrink: 0; }
+    .hist-summary { font-size: 13px; color: var(--sub); line-height: 1.5; }
+    .hist-empty { text-align: center; padding: 60px 20px; color: var(--sub); }
+    .hist-stock-pre { font-size: 12px; margin-top: 8px; padding: 12px; background: var(--bg-input); border-radius: 8px; overflow-x: auto; white-space: pre-wrap; color: var(--sub); line-height: 1.6; }
+    details > summary { cursor: pointer; font-size: 13px; color: var(--sub); user-select: none; }
+    details > summary:hover { color: var(--text); }
+
+    /* ── Dashboard ── */
+    .dash-stock-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .dash-stock-row:last-child { border-bottom: none; }
+    .dash-stock-name { font-size: 14px; font-weight: 600; }
+    .dash-stock-meta { font-size: 12px; color: var(--sub); margin-top: 2px; }
+    .dash-stock-price { text-align: right; }
+    .dash-stock-current { font-size: 15px; font-weight: 700; }
+    .dash-stock-change { font-size: 12px; margin-top: 2px; }
+
+    /* ── Report box (markdown rendered) ── */
+    .report-box { font-size: 14px; line-height: 1.8; }
+    .report-box h2 { font-size: 17px; font-weight: 700; margin: 18px 0 8px; }
+    .report-box h3 { font-size: 15px; font-weight: 600; margin: 14px 0 6px; }
+    .report-box ul, .report-box ol { padding-left: 20px; margin: 6px 0; }
+    .report-box li { margin-bottom: 4px; }
+    .report-box p  { margin-bottom: 8px; }
+    .report-box hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+    /* ── Mobile tab bar ── */
+    .tabbar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-input); border-top: 1px solid var(--border); z-index: 100; }
+    .tabbar-inner { display: flex; }
+    .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; cursor: pointer; color: var(--sub); font-size: 10px; transition: color .15s; user-select: none; }
+    .tab-btn .ti { font-size: 20px; }
+    .tab-btn.active { color: var(--accent); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .tabbar  { display: block; }
+      .main { margin-left: 0; padding: 16px 16px 88px; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- 데스크탑 사이드바 -->
+  <aside class="sidebar">
+    <div class="logo">📈 StockMind</div>
+    <nav class="sidebar-nav">
+      <div class="nav-item" data-tab="dashboard"> <span class="nav-icon">🏠</span>대시보드</div>
+      <div class="nav-item" data-tab="portfolio"> <span class="nav-icon">📊</span>내 종목</div>
+      <div class="nav-item" data-tab="discover">  <span class="nav-icon">🔍</span>종목 발굴</div>
+      <div class="nav-item" data-tab="history">   <span class="nav-icon">🕐</span>분석 이력</div>
+      <div class="nav-item" data-tab="verify">    <span class="nav-icon">📈</span>검증</div>
+      <div class="nav-item" data-tab="settings">  <span class="nav-icon">⚙️</span>설정</div>
+    </nav>
+  </aside>
+
+  <!-- 메인 콘텐츠 -->
+  <main class="main">
+
+    <!-- 설정 미완료 전역 배너 -->
+    <div id="setup-banner" class="banner banner-warn">
+      ⚠️ <strong>초기 설정이 필요합니다.</strong>
+      &nbsp;<span id="banner-detail"></span>
+      &nbsp;— <span style="text-decoration:underline;cursor:pointer" onclick="ui.switchTab('settings')">설정 탭으로 이동</span>
+    </div>
+
+    <!-- 대시보드 -->
+    <div id="tab-dashboard" class="tab-content">
+      <div class="page-header">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <h2>🏠 대시보드</h2>
+          <button class="btn btn-secondary" id="btn-dash-refresh">🔄 시세 갱신</button>
+        </div>
+      </div>
+
+      <div id="dash-msg" class="msg" style="margin-bottom:14px"></div>
+
+      <!-- 포트폴리오 요약 -->
+      <div class="card">
+        <div class="card-title">포트폴리오 요약</div>
+        <div id="dash-summary"></div>
+      </div>
+
+      <!-- 보유 종목 현황 -->
+      <div id="dash-stocks-wrap" class="card" style="display:none">
+        <div class="card-title">보유 종목 현황</div>
+        <div id="dash-stocks"></div>
+      </div>
+
+      <!-- AI 시황 브리핑 -->
+      <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin-bottom:0">✨ AI 시황 브리핑</div>
+          <button class="btn btn-secondary" id="btn-dash-briefing">브리핑 받기</button>
+        </div>
+        <div id="dash-briefing-content" class="report-box" style="font-size:13px;color:var(--sub)">
+          버튼을 누르면 Gemini가 오늘의 국내 주식시장 시황을 분석합니다.
+        </div>
+      </div>
+    </div>
+
+    <!-- 내 종목 -->
+    <div id="tab-portfolio" class="tab-content">
+      <div class="page-header">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <h2>📊 내 종목</h2>
+          <div class="row">
+            <button class="btn btn-secondary" id="btn-refresh-pf">🔄 시세 갱신</button>
+            <button class="btn btn-primary"   id="btn-show-add">+ 종목 추가</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="pf-msg" class="msg" style="margin-bottom:14px"></div>
+
+      <!-- 종목 추가 폼 -->
+      <div id="add-stock-form" class="card" style="display:none">
+        <div class="card-title">종목 추가</div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>종목코드 *</label>
+            <input type="text" id="new-code" placeholder="005930" maxlength="6" />
+          </div>
+          <div class="form-group">
+            <label>시장 *</label>
+            <select id="new-market">
+              <option value="J">코스피</option>
+              <option value="Q">코스닥</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>종목명 *</label>
+            <input type="text" id="new-name" placeholder="삼성전자" />
+          </div>
+          <div class="form-group">
+            <label>매수가 (원) *</label>
+            <input type="number" id="new-buy-price" placeholder="70000" min="1" />
+          </div>
+          <div class="form-group">
+            <label>수량 (주) *</label>
+            <input type="number" id="new-quantity" placeholder="10" min="1" />
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>매수일</label>
+            <input type="date" id="new-buy-date" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn btn-primary"   id="btn-confirm-add">➕ 추가</button>
+          <button class="btn btn-secondary" id="btn-cancel-add">취소</button>
+        </div>
+        <div id="add-msg" class="msg"></div>
+      </div>
+
+      <!-- 포트폴리오 요약 (시세 갱신 후 표시) -->
+      <div id="pf-summary-card" class="card" style="display:none">
+        <div class="card-title">포트폴리오 요약</div>
+        <div class="summary-grid" id="pf-summary"></div>
+      </div>
+
+      <!-- 종목 목록 -->
+      <div id="portfolio-list"></div>
+    </div>
+
+    <!-- 종목 발굴 -->
+    <div id="tab-discover" class="tab-content">
+      <div class="page-header"><h2>🔍 종목 발굴</h2></div>
+
+      <div class="card">
+        <div class="card-title">분석 조건 입력</div>
+        <div class="form-group">
+          <label>테마 / 키워드 *</label>
+          <textarea id="disc-theme" placeholder="예: AI 반도체, 2차전지, 방산주, 실적 개선 기대 종목..." rows="3"></textarea>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>관심 종목코드 (선택)</label>
+            <input type="text" id="disc-ticker" placeholder="005930" maxlength="6" />
+          </div>
+          <div class="form-group">
+            <label>시장 구분</label>
+            <select id="disc-market">
+              <option value="J">코스피</option>
+              <option value="Q">코스닥</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>투자 기간</label>
+          <div class="radio-group">
+            <label class="radio-item"><input type="radio" name="disc-period" value="급등" />급등 (수일~2주)</label>
+            <label class="radio-item"><input type="radio" name="disc-period" value="스윙" checked />스윙 (1~3주)</label>
+            <label class="radio-item"><input type="radio" name="disc-period" value="단기" />단기 (1~3개월)</label>
+            <label class="radio-item"><input type="radio" name="disc-period" value="중기" />중기 (6개월+)</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>리스크 성향</label>
+          <div class="radio-group">
+            <label class="radio-item"><input type="radio" name="disc-risk" value="공격형" />공격형</label>
+            <label class="radio-item"><input type="radio" name="disc-risk" value="중립형" checked />중립형</label>
+            <label class="radio-item"><input type="radio" name="disc-risk" value="안정형" />안정형</label>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-start-discover">🔍 분석 시작</button>
+      </div>
+
+      <div id="discover-progress" class="card" style="display:none">
+        <div class="card-title">분석 진행 중</div>
+        <div id="disc-steps" class="disc-steps"></div>
+      </div>
+
+      <div id="discover-result" style="display:none">
+        <div class="card">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="card-title" style="margin-bottom:0">분석 리포트</div>
+            <div class="row" style="gap:8px">
+              <button class="btn btn-secondary" id="btn-disc-add-portfolio">📊 내 종목에 추가</button>
+              <button class="btn btn-primary"   id="btn-disc-verify">✅ 검증 등록</button>
+            </div>
+          </div>
+          <div id="disc-report-content" class="report-box"></div>
+        </div>
+      </div>
+
+      <div id="disc-msg" class="msg" style="margin-top:12px"></div>
+    </div>
+
+    <!-- 분석 이력 -->
+    <div id="tab-history" class="tab-content">
+      <div class="page-header">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <h2>🕐 분석 이력</h2>
+          <select id="hist-filter" style="max-width:160px">
+            <option value="">전체</option>
+            <option value="종목발굴">종목 발굴</option>
+            <option value="대응방안">대응방안</option>
+            <option value="시황브리핑">시황 브리핑</option>
+          </select>
+        </div>
+      </div>
+      <div id="hist-list"></div>
+    </div>
+
+    <!-- 검증 -->
+    <div id="tab-verify" class="tab-content">
+      <div class="page-header"><h2>📈 검증</h2></div>
+
+      <!-- 종합 성과 통계 -->
+      <div class="card">
+        <div class="card-title">종합 성과 통계</div>
+        <div id="verify-stats"></div>
+      </div>
+
+      <!-- 검증 대기 목록 -->
+      <div id="verify-pending-wrap" class="card" style="display:none">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin-bottom:0">⏰ 검증 대기</div>
+          <button class="btn btn-primary" id="btn-run-verify-all">▶ 전체 검증 실행</button>
+        </div>
+        <div id="verify-pending-list"></div>
+        <div id="verify-run-msg" class="msg" style="margin-top:10px"></div>
+      </div>
+
+      <!-- 전체 검증 이력 -->
+      <div class="card">
+        <div class="card-title">전체 검증 이력</div>
+        <div style="overflow-x:auto">
+          <div id="verify-history-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 설정 -->
+    <div id="tab-settings" class="tab-content">
+      <div class="page-header"><h2>⚙️ 설정</h2></div>
+
+      <div class="card">
+        <div class="card-title">Google Gemini API</div>
+        <div class="form-group">
+          <label>API 키</label>
+          <input type="password" id="gemini-api-key" placeholder="AIza..." autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">KIS Open API (한국투자증권)</div>
+        <div class="form-group">
+          <label>App Key</label>
+          <input type="password" id="kis-app-key" placeholder="PS..." autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>App Secret</label>
+          <input type="password" id="kis-app-secret" placeholder="App Secret 입력" autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label>Cloudflare Workers 프록시 URL</label>
+          <input type="text" id="proxy-url" placeholder="https://xxx.workers.dev" autocomplete="off" />
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn btn-secondary" id="btn-issue-token">🔑 토큰 발급</button>
+          <div id="token-badge"></div>
+        </div>
+        <div id="token-msg" class="msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">투자 성향</div>
+        <div class="form-group">
+          <label>기본 투자 성향 — 종목 발굴 · 대응방안 프롬프트에 공통 적용됩니다</label>
+          <select id="invest-style">
+            <option value="공격형">공격형 — 고위험 · 고수익 추구</option>
+            <option value="중립형" selected>중립형 — 균형 잡힌 접근</option>
+            <option value="안정형">안정형 — 안전 마진 중시</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btn-save">💾 설정 저장</button>
+      <div id="save-msg" class="msg"></div>
+
+      <hr class="divider" />
+
+      <div class="card">
+        <div class="card-title">📡 KIS 데이터 연결 테스트</div>
+        <div class="row" style="margin-bottom:8px">
+          <input type="text" id="test-ticker" placeholder="종목코드 (예: 005930)" style="max-width:190px" />
+          <select id="test-market" style="max-width:140px">
+            <option value="J">코스피 (J)</option>
+            <option value="Q">코스닥 (Q)</option>
+          </select>
+          <button class="btn btn-secondary" id="btn-test-kis">조회</button>
+        </div>
+        <div id="test-result" class="msg"></div>
+      </div>
+
+      <div class="card danger">
+        <div class="card-title">⚠️ 위험 구역</div>
+        <p style="font-size:13px;color:var(--sub);margin-bottom:14px">
+          IndexedDB에 저장된 모든 데이터(설정, 포트폴리오, 분석 이력, 검증 이력)가 영구 삭제됩니다.
+        </p>
+        <button class="btn btn-danger" id="btn-clear">🗑️ 전체 데이터 초기화</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 모바일 하단 탭바 -->
+<nav class="tabbar">
+  <div class="tabbar-inner">
+    <div class="tab-btn" data-tab="dashboard"><span class="ti">🏠</span>대시보드</div>
+    <div class="tab-btn" data-tab="portfolio"><span class="ti">📊</span>내 종목</div>
+    <div class="tab-btn" data-tab="discover"> <span class="ti">🔍</span>종목발굴</div>
+    <div class="tab-btn" data-tab="history">  <span class="ti">🕐</span>분석이력</div>
+    <div class="tab-btn" data-tab="verify">   <span class="ti">📈</span>검증</div>
+    <div class="tab-btn" data-tab="settings"> <span class="ti">⚙️</span>설정</div>
+  </div>
+</nav>
+
+<script>
+'use strict';
+
+// ============================================================
+// dbService — IndexedDB CRUD
+// ============================================================
+const dbService = (() => {
+  const DB_NAME = 'stockmind_db';
+  const DB_VERSION = 1;
+  let _db = null;
+
+  async function _open() {
+    if (_db) return _db;
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = ({ target: { result: d } }) => {
+        if (!d.objectStoreNames.contains('settings'))
+          d.createObjectStore('settings', { keyPath: 'key' });
+        for (const name of ['portfolio', 'analysis_history', 'verification'])
+          if (!d.objectStoreNames.contains(name))
+            d.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+      };
+      req.onsuccess = ({ target: { result } }) => { _db = result; resolve(_db); };
+      req.onerror   = () => reject(req.error);
+    });
+  }
+
+  // 단일 IDBRequest를 Promise로 감싸는 헬퍼
+  function _req(store, mode, fn) {
+    return _open().then(d => new Promise((resolve, reject) => {
+      const r = fn(d.transaction(store, mode).objectStore(store));
+      r.onsuccess = () => resolve(r.result);
+      r.onerror   = () => reject(r.error);
+    }));
+  }
+
+  const getSetting   = (key)        => _req('settings', 'readonly',  s => s.get(key)).then(r => r ? r.value : null);
+  const putSetting   = (key, value) => _req('settings', 'readwrite', s => s.put({ key, value })).then(() => {});
+  const get          = (store, id)  => _req(store, 'readonly',  s => s.get(id)).then(r => r ?? null);
+  const put          = (store, rec) => _req(store, 'readwrite', s => s.put(rec));
+  const getAll       = (store)      => _req(store, 'readonly',  s => s.getAll());
+  const deleteRecord = (store, id)  => _req(store, 'readwrite', s => s.delete(id)).then(() => {});
+  const clearStore   = (store)      => _req(store, 'readwrite', s => s.clear()).then(() => {});
+
+  return { getSetting, putSetting, get, put, getAll, deleteRecord, clearStore };
+})();
+
+// ============================================================
+// stockDataService — KIS API 시세/차트 조회 + buildStockContext
+// ============================================================
+const stockDataService = (() => {
+
+  function _ma(closes, n) {
+    if (closes.length < n) return null;
+    return Math.round(closes.slice(0, n).reduce((a, b) => a + b, 0) / n);
+  }
+
+  function _isMarketOpen() {
+    const kst  = new Date(Date.now() + 9 * 3600000);
+    const day  = kst.getUTCDay();
+    if (day === 0 || day === 6) return false;
+    const hhmm = kst.getUTCHours() * 100 + kst.getUTCMinutes();
+    return hhmm >= 900 && hhmm < 1530;
+  }
+
+  async function getToken(appkey, appsecret, proxyUrl) {
+    const token   = await dbService.getSetting('kis_access_token');
+    const expires = await dbService.getSetting('kis_token_expires');
+    if (token && expires && (new Date(expires) - Date.now()) > 3600000) return token;
+
+    const res = await fetch(`${proxyUrl}/token`, {
+      method: 'POST',
+      headers: { 'x-appkey': appkey, 'x-appsecret': appsecret },
+    });
+    if (!res.ok) throw new Error(`토큰 발급 실패: HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.access_token) throw new Error('토큰 발급 실패: ' + (data.msg1 || JSON.stringify(data)));
+
+    const newExpires = new Date(Date.now() + Number(data.expires_in) * 1000).toISOString();
+    await dbService.putSetting('kis_access_token', data.access_token);
+    await dbService.putSetting('kis_token_expires', newExpires);
+    return data.access_token;
+  }
+
+  async function getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl) {
+    const res = await fetch(`${proxyUrl}/price/${market}/${ticker}`, {
+      headers: { 'x-token': token, 'x-appkey': appkey, 'x-appsecret': appsecret },
+    });
+    if (!res.ok) throw new Error(`현재가 조회 실패: HTTP ${res.status}`);
+    const data = await res.json();
+    const o = data.output;
+    if (!o) throw new Error('현재가 응답 이상: ' + JSON.stringify(data).slice(0, 120));
+
+    return {
+      price:      parseInt(o.stck_prpr,  10),
+      change:     parseInt(o.prdy_vrss,  10),
+      changeRate: parseFloat(o.prdy_ctrt),
+      volume:     parseInt(o.acml_vol,   10),
+      high:       parseInt(o.stck_hgpr,  10),
+      low:        parseInt(o.stck_lwpr,  10),
+      high52:     parseInt(o.w52_hgpr,   10),
+      low52:      parseInt(o.w52_lwpr,   10),
+      per:        parseFloat(o.per)   || null,
+      pbr:        parseFloat(o.pbr)   || null,
+      eps:        parseInt(o.eps, 10) || null,
+    };
+  }
+
+  async function getChartData(ticker, market, token, appkey, appsecret, proxyUrl) {
+    const res = await fetch(`${proxyUrl}/chart/${market}/${ticker}/D`, {
+      headers: { 'x-token': token, 'x-appkey': appkey, 'x-appsecret': appsecret },
+    });
+    if (!res.ok) throw new Error(`차트 조회 실패: HTTP ${res.status}`);
+    const data = await res.json();
+    const rows = data.output2 || data.output || [];
+    if (!rows.length) {
+      const detail = data.msg1 ? `[${data.msg_cd}] ${data.msg1}` : '응답 데이터 없음';
+      throw new Error('차트 데이터 없음: ' + detail);
+    }
+
+    const candles = rows.map(r => ({
+      date:   r.stck_bsop_date,
+      open:   parseInt(r.stck_oprc, 10),
+      high:   parseInt(r.stck_hgpr, 10),
+      low:    parseInt(r.stck_lwpr, 10),
+      close:  parseInt(r.stck_clpr, 10),
+      volume: parseInt(r.acml_vol,  10),
+    }));
+
+    const closes  = candles.map(c => c.close);
+    const volumes = candles.map(c => c.volume);
+    const avgVolume20 = volumes.length >= 20
+      ? Math.round(volumes.slice(0, 20).reduce((a, b) => a + b, 0) / 20)
+      : null;
+
+    return {
+      candles,
+      ma5:   _ma(closes, 5),
+      ma20:  _ma(closes, 20),
+      ma60:  _ma(closes, 60),
+      ma120: _ma(closes, 120),
+      avgVolume20,
+    };
+  }
+
+  function buildStockContext(priceData, chartData) {
+    const p    = priceData;
+    const c    = chartData;
+    const sign = p.change >= 0 ? '+' : '';
+    const mkt  = _isMarketOpen() ? '장중' : '장마감';
+
+    const lines = [
+      `## 실시간 주식 데이터 (${mkt})`,
+      `- 현재가: ${p.price.toLocaleString()}원 (${sign}${p.change.toLocaleString()}원, ${sign}${p.changeRate}%)`,
+      `- 거래량: ${p.volume.toLocaleString()} | 20일 평균거래량: ${c.avgVolume20 ? c.avgVolume20.toLocaleString() : 'N/A'}`,
+      `- 당일 고/저: ${p.high.toLocaleString()} / ${p.low.toLocaleString()}원`,
+      `- 52주 고/저: ${p.high52.toLocaleString()} / ${p.low52.toLocaleString()}원`,
+      `- PER: ${p.per ?? 'N/A'} | PBR: ${p.pbr ?? 'N/A'} | EPS: ${p.eps ? p.eps.toLocaleString() + '원' : 'N/A'}`,
+      ``,
+      `### 이동평균`,
+      `- MA5: ${c.ma5 ? c.ma5.toLocaleString() + '원' : 'N/A'}`,
+      `- MA20: ${c.ma20 ? c.ma20.toLocaleString() + '원' : 'N/A'}`,
+      `- MA60: ${c.ma60 ? c.ma60.toLocaleString() + '원' : 'N/A'}`,
+      `- MA120: ${c.ma120 ? c.ma120.toLocaleString() + '원' : 'N/A'}`,
+      ``,
+      `### 최근 5일 OHLCV`,
+    ];
+
+    for (const d of c.candles.slice(0, 5)) {
+      lines.push(
+        `- ${d.date}: 시${d.open.toLocaleString()} 고${d.high.toLocaleString()} ` +
+        `저${d.low.toLocaleString()} 종${d.close.toLocaleString()} 량${d.volume.toLocaleString()}`
+      );
+    }
+
+    return lines.join('\n');
+  }
+
+  return { getToken, getCurrentPrice, getChartData, buildStockContext, isMarketOpen: _isMarketOpen };
+})();
+
+// ============================================================
+// aiService — Gemini API 단일 진입점
+// ============================================================
+const aiService = (() => {
+  async function callAI(systemPrompt, userMessage, apiKey) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+        }),
+      }
+    );
+    if (res.status === 429) throw new Error('QUOTA_EXCEEDED');
+    if (!res.ok) throw new Error(`Gemini API 오류: HTTP ${res.status}`);
+    const data = await res.json();
+    const parts = data.candidates?.[0]?.content?.parts;
+    if (!parts) throw new Error('Gemini 응답 이상: ' + JSON.stringify(data).slice(0, 200));
+    return parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
+  }
+  return { callAI };
+})();
+
+// ============================================================
+// analysisTeam — 데이터 수집 → AI 호출 오케스트레이션
+// ============================================================
+const analysisTeam = (() => {
+
+  const P = {
+    m1: (style, period) =>
+      `당신은 국내 주식 시장/뉴스/공시 분석가(팀원1)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\n실시간 데이터를 바탕으로 뉴스·이슈·산업 동향을 분석하세요. bullet point로 간결하게 출력하고, 마지막에 반드시 "투자 매력도: {0~100}점" 형태로 수치화해 출력하세요.`,
+    m2: (style, period) =>
+      `당신은 국내 주식 기술적 분석가(팀원2)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\nMA5/MA20/MA60/MA120, 거래량, 52주 고/저점을 실제 수치 기반으로 분석하세요. bullet point로 출력하고, 마지막에 반드시 "투자 매력도: {0~100}점" 형태로 출력하세요.`,
+    m3: (style, period) =>
+      `당신은 국내 주식 재무 분석가(팀원3)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\nPER·PBR·EPS와 52주 가격 범위를 실제 수치 기반으로 밸류에이션 평가하세요. bullet point로 출력하고, 마지막에 반드시 "투자 매력도: {0~100}점" 형태로 출력하세요.`,
+    m4: (style, period) =>
+      `당신은 국내 주식 매매 전략가(팀원4)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\n실시간 현재가를 기반으로 구체적인 가격을 계산하세요.\n반드시 아래 형식 그대로 출력하세요 (콤마 없는 정수 + "원"):\n\n- 매수가: {숫자}원\n- 분할매수가 1: {숫자}원\n- 분할매수가 2: {숫자}원\n- 매도가(목표가): {숫자}원\n- 분할매도가 1: {숫자}원\n- 분할매도가 2: {숫자}원\n- 손절가: {숫자}원\n- 예상 수익률: {숫자}%\n- 손익비: 1 : {숫자}\n- 상승 확률: {숫자}%\n- 매매 전략 요약: (2~3줄)`,
+    m6: () =>
+      `당신은 투자 리스크 검증 전문가(팀원6, 악마의 변호인)입니다.\n팀원1~4 분석에 반론을 제기하고 치명적 약점을 발굴하세요.\n반드시 아래 형식으로 출력하세요:\n\n**치명적 약점 여부**: 있음 / 없음\n\n**반론 포인트**\n1. ...\n2. ...\n\n**하락 시나리오**\n- 시나리오 A: ...\n- 시나리오 B: ...\n\n**최종 판정**: 통과 / 탈락\n(탈락 시 이유 1~2줄)`,
+    leader: (style) =>
+      `당신은 AI 주식 분석팀장입니다. 팀원1~4와 팀원6의 분석을 종합하여 최종 투자 리포트를 작성하세요.\n투자 성향: ${style}\n반드시 아래 형식으로 출력하세요:\n\n## 최종 투자 의견\n\n**추천 여부**: 추천 / 조건부 추천 / 비추천\n\n**핵심 근거**\n1. ...\n2. ...\n3. ...\n\n**주요 리스크**\n1. ...\n2. ...\n\n**종합 의견**: (3~5줄)\n\n**성공 확률**: {숫자}% (팀원1~4 매력도 가중 평균 기반)\n\n※ 뉴스/공시 분석은 AI 학습 데이터 기반이며, 가격/기술적 분석은 실시간 데이터 기반입니다.\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
+    m5: (holding) =>
+      `당신은 보유종목 대응방안 전문가(팀원5)입니다.\n보유현황: ${holding}\n팀원1~4 분석과 보유현황을 종합하여 대응방안을 작성하세요.\n반드시 아래 형식으로 출력하세요:\n\n## 보유종목 대응방안\n\n**현재 상황 요약** (현재가, 손익률 수치 포함 2~3줄)\n\n**AI 판단**: 홀드 / 추가매수 / 분할매도 / 손절\n\n**판단 근거**\n1. ...\n2. ...\n3. ...\n\n**구체적 행동 계획**\n- 시나리오 A (상승 시): ...\n- 시나리오 B (하락 시): ...\n\n**주의 리스크**\n1. ...\n2. ...\n\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
+  };
+
+  function parseRecData(m4Out, ticker, name) {
+    const ex = (label) => {
+      const m = m4Out.match(new RegExp(`${label}[:\\s]+([\\d,]+)원`));
+      return m ? parseInt(m[1].replace(/,/g, ''), 10) : null;
+    };
+    return {
+      code: ticker || '',
+      name: name || '',
+      rec_price:    ex('매수가'),
+      target_price: ex('매도가\\(목표가\\)') ?? ex('목표가'),
+      stop_loss:    ex('손절가'),
+    };
+  }
+
+  async function runDiscovery({ ticker, market, stockName, theme, period, riskStyle, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    let ctx = '', priceData = null, chartData = null;
+
+    if (ticker && appkey && appsecret && proxyUrl) {
+      onProgress(0, '실시간 데이터 수집 중...');
+      const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+      priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
+      await new Promise(r => setTimeout(r, 700));
+      chartData  = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
+      ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
+      onProgress(0, '데이터 수집 완료', 'done');
+    } else {
+      onProgress(0, '종목코드 없음 — AI 학습 데이터 기반 분석', 'done');
+    }
+
+    const base = `종목: ${stockName || ticker || '미지정'} | 테마: ${theme} | 투자기간: ${period} | 성향: ${riskStyle}`;
+
+    onProgress(1, '팀원1 시장/뉴스 분석 중...');
+    const r1 = await aiService.callAI(P.m1(riskStyle, period), ctx + base, apiKey);
+    onProgress(1, '팀원1 완료', 'done');
+
+    onProgress(2, '팀원2 기술적 분석 중...');
+    const r2 = await aiService.callAI(P.m2(riskStyle, period), ctx + `팀원1:\n${r1}`, apiKey);
+    onProgress(2, '팀원2 완료', 'done');
+
+    onProgress(3, '팀원3 재무 분석 중...');
+    const r3 = await aiService.callAI(P.m3(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    onProgress(3, '팀원3 완료', 'done');
+
+    onProgress(4, '팀원4 매매전략 수립 중...');
+    const r4 = await aiService.callAI(P.m4(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    onProgress(4, '팀원4 완료', 'done');
+
+    onProgress(5, '팀원6 리스크 검토 중...');
+    const r6 = await aiService.callAI(P.m6(), `${ctx}팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`, apiKey);
+    onProgress(5, '팀원6 완료', 'done');
+
+    if (/최종 판정[^\n]*탈락/.test(r6)) {
+      onProgress(6, '팀장 생략 — 탈락 판정', 'error');
+      return {
+        report: `## 분석 결과: 투자 부적합\n\n팀원6이 치명적 약점을 발견하여 분석을 중단합니다.\n\n${r6}`,
+        member4Output: r4, eliminated: true, priceData, chartData,
+      };
+    }
+
+    onProgress(6, '팀장 최종 리포트 작성 중...');
+    const rL = await aiService.callAI(P.leader(riskStyle),
+      `${ctx}${base}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}\n\n팀원6:\n${r6}`,
+      apiKey);
+    onProgress(6, '분석 완료', 'done');
+
+    return { report: rL, member4Output: r4, eliminated: false, priceData, chartData };
+  }
+
+  async function runResponse({ ticker, market, stockName, avgPrice, totalQty, pnlRate, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    onProgress(0, '실시간 데이터 수집 중...');
+    const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+    const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
+    await new Promise(r => setTimeout(r, 700));
+    const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
+    const ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
+    onProgress(0, '데이터 수집 완료', 'done');
+
+    const holding = `종목: ${stockName}(${ticker}) | 평균매수가: ${avgPrice.toLocaleString()}원 | 수량: ${totalQty}주 | 손익률: ${pnlRate}%`;
+
+    onProgress(1, '팀원1 시장/뉴스 분석 중...');
+    const r1 = await aiService.callAI(P.m1('중립형', '보유중'), ctx + holding, apiKey);
+    onProgress(1, '팀원1 완료', 'done');
+
+    onProgress(2, '팀원2 기술적 분석 중...');
+    const r2 = await aiService.callAI(P.m2('중립형', '보유중'), ctx + `팀원1:\n${r1}`, apiKey);
+    onProgress(2, '팀원2 완료', 'done');
+
+    onProgress(3, '팀원3 재무 분석 중...');
+    const r3 = await aiService.callAI(P.m3('중립형', '보유중'), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    onProgress(3, '팀원3 완료', 'done');
+
+    onProgress(4, '팀원4 매매전략 수립 중...');
+    const r4 = await aiService.callAI(P.m4('중립형', '보유중'), ctx + `${holding}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    onProgress(4, '팀원4 완료', 'done');
+
+    onProgress(5, '팀원5 대응방안 작성 중...');
+    const r5 = await aiService.callAI(P.m5(holding), `${ctx}팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`, apiKey);
+    onProgress(5, '분석 완료', 'done');
+
+    return { report: r5, priceData, chartData };
+  }
+
+  return { runDiscovery, runResponse, parseRecData };
+})();
+
+// ============================================================
+// ui — 탭 전환 + 설정 탭
+// ============================================================
+const ui = (() => {
+
+  let _pfItems  = [];   // IndexedDB portfolio 전체
+  let _pfPrices = {};   // { 'J_005930': priceData } — 세션 내 캐시
+
+  let _discResult      = null;
+  let _discStepState   = Array(7).fill('pending');
+  let _respStepState   = Array(6).fill('pending');
+  let _analyzing       = false;
+
+  const DISC_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
+  const RESP_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원5 대응방안'];
+
+  function _msg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = `msg msg-${type} show`;
+    if (type === 'success') setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  async function _refreshTokenBadge() {
+    const expires = await dbService.getSetting('kis_token_expires');
+    const el = document.getElementById('token-badge');
+    if (!expires) {
+      el.innerHTML = '<span class="token-badge badge-none">토큰 없음</span>';
+      return;
+    }
+    const msLeft = new Date(expires) - Date.now();
+    if (msLeft > 0) {
+      const h = Math.floor(msLeft / 3600000);
+      el.innerHTML = `<span class="token-badge badge-valid">✓ 유효 (${h}시간 남음)</span>`;
+    } else {
+      el.innerHTML = '<span class="token-badge badge-expired">✗ 만료됨 — 재발급 필요</span>';
+    }
+  }
+
+  async function _checkSetup() {
+    const [g, k, s, p] = await Promise.all([
+      dbService.getSetting('gemini_api_key'),
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+    ]);
+    const missing = [];
+    if (!g) missing.push('Gemini API 키');
+    if (!k) missing.push('KIS App Key');
+    if (!s) missing.push('KIS App Secret');
+    if (!p) missing.push('Workers URL');
+
+    const banner = document.getElementById('setup-banner');
+    if (missing.length) {
+      document.getElementById('banner-detail').textContent = `미설정 항목: ${missing.join(', ')}`;
+      banner.classList.add('show');
+      return false;
+    }
+    banner.classList.remove('show');
+    return true;
+  }
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('[data-tab]').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    document.querySelectorAll(`[data-tab="${tabId}"]`).forEach(el => el.classList.add('active'));
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (tabId === 'dashboard') _loadDashboard();
+    if (tabId === 'settings')  _loadSettings();
+    if (tabId === 'portfolio') _loadPortfolio();
+    if (tabId === 'history')   _loadHistory();
+    if (tabId === 'verify')    _loadVerify();
+  }
+
+  async function _loadSettings() {
+    const [g, k, s, p, style] = await Promise.all([
+      dbService.getSetting('gemini_api_key'),
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+      dbService.getSetting('invest_style'),
+    ]);
+    if (g)     document.getElementById('gemini-api-key').value = g;
+    if (k)     document.getElementById('kis-app-key').value    = k;
+    if (s)     document.getElementById('kis-app-secret').value = s;
+    if (p)     document.getElementById('proxy-url').value      = p;
+    if (style) document.getElementById('invest-style').value   = style;
+    await _refreshTokenBadge();
+  }
+
+  async function _saveSettings() {
+    const btn = document.getElementById('btn-save');
+    btn.disabled = true;
+    try {
+      await Promise.all([
+        dbService.putSetting('gemini_api_key', document.getElementById('gemini-api-key').value.trim()),
+        dbService.putSetting('kis_app_key',    document.getElementById('kis-app-key').value.trim()),
+        dbService.putSetting('kis_app_secret', document.getElementById('kis-app-secret').value.trim()),
+        dbService.putSetting('proxy_url',      document.getElementById('proxy-url').value.trim()),
+        dbService.putSetting('invest_style',   document.getElementById('invest-style').value),
+      ]);
+      _msg('save-msg', '✓ 설정이 저장되었습니다.', 'success');
+      await _checkSetup();
+    } catch (err) {
+      _msg('save-msg', '저장 실패: ' + err.message, 'error');
+      console.error('[settings]', err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function _issueToken() {
+    const appkey    = document.getElementById('kis-app-key').value.trim();
+    const appsecret = document.getElementById('kis-app-secret').value.trim();
+    const proxyUrl  = document.getElementById('proxy-url').value.trim();
+
+    if (!appkey || !appsecret || !proxyUrl) {
+      _msg('token-msg', 'App Key, App Secret, Workers URL을 먼저 입력·저장해주세요.', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-issue-token');
+    btn.disabled = true;
+    _msg('token-msg', '토큰 발급 중...', 'info');
+
+    try {
+      const res = await fetch(`${proxyUrl}/token`, {
+        method: 'POST',
+        headers: { 'x-appkey': appkey, 'x-appsecret': appsecret },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+      const data = await res.json();
+
+      if (data.access_token) {
+        const expires = new Date(Date.now() + Number(data.expires_in) * 1000).toISOString();
+        await dbService.putSetting('kis_access_token', data.access_token);
+        await dbService.putSetting('kis_token_expires', expires);
+        _msg('token-msg', `✓ 발급 성공! 만료: ${new Date(expires).toLocaleString('ko-KR')}`, 'success');
+        await _refreshTokenBadge();
+      } else {
+        _msg('token-msg', '발급 실패: ' + (data.msg1 || data.message || JSON.stringify(data)), 'error');
+      }
+    } catch (err) {
+      _msg('token-msg', '발급 실패: ' + err.message, 'error');
+      console.error('[token]', err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function _clearAll() {
+    if (!confirm('⚠️ 주의\n\n모든 설정, 포트폴리오, 분석 이력, 검증 이력이 영구 삭제됩니다.\n정말 초기화하시겠습니까?'))
+      return;
+    const btn = document.getElementById('btn-clear');
+    btn.disabled = true;
+    try {
+      await Promise.all(['settings', 'portfolio', 'analysis_history', 'verification'].map(s => dbService.clearStore(s)));
+      alert('초기화 완료. 페이지를 새로고침합니다.');
+      location.reload();
+    } catch (err) {
+      alert('초기화 실패: ' + err.message);
+      console.error('[clear]', err);
+      btn.disabled = false;
+    }
+  }
+
+  async function _testKis() {
+    const ticker = document.getElementById('test-ticker').value.trim();
+    const market = document.getElementById('test-market').value;
+    if (!ticker) { _msg('test-result', '종목코드를 입력하세요.', 'error'); return; }
+
+    const btn = document.getElementById('btn-test-kis');
+    btn.disabled = true;
+    _msg('test-result', '조회 중...', 'info');
+
+    try {
+      const [appkey, appsecret, proxyUrl] = await Promise.all([
+        dbService.getSetting('kis_app_key'),
+        dbService.getSetting('kis_app_secret'),
+        dbService.getSetting('proxy_url'),
+      ]);
+      if (!appkey || !appsecret || !proxyUrl)
+        throw new Error('KIS 설정을 먼저 저장해주세요.');
+
+      const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+      const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
+      await new Promise(r => setTimeout(r, 700)); // KIS API 초당 호출 한도 방지
+      const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
+
+      const sign = priceData.change >= 0 ? '+' : '';
+      const mktStatus = stockDataService.isMarketOpen() ? '[장중]' : '[장마감]';
+      _msg('test-result',
+        `✓ ${mktStatus} ${ticker} | 현재가: ${priceData.price.toLocaleString()}원 ` +
+        `(${sign}${priceData.changeRate}%) | ` +
+        `MA20: ${chartData.ma20 ? chartData.ma20.toLocaleString() + '원' : 'N/A'} | ` +
+        `20일 평균거래량: ${chartData.avgVolume20 ? chartData.avgVolume20.toLocaleString() : 'N/A'}`,
+        'success'
+      );
+      console.log('[test-kis] buildStockContext:\n', stockDataService.buildStockContext(priceData, chartData));
+    } catch (err) {
+      _msg('test-result', '오류: ' + err.message, 'error');
+      console.error('[test-kis]', err);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── Portfolio ──
+
+  function _pfGrouped() {
+    const groups = {};
+    for (const item of _pfItems) {
+      const key = `${item.market}_${item.code}`;
+      if (!groups[key])
+        groups[key] = { key, code: item.code, market: item.market, name: item.name, entries: [] };
+      groups[key].entries.push(item);
+    }
+    return Object.values(groups);
+  }
+
+  function _pfWeightedAvg(entries) {
+    const totalCost = entries.reduce((s, e) => s + e.buy_price * e.quantity, 0);
+    const totalQty  = entries.reduce((s, e) => s + e.quantity, 0);
+    return { avgPrice: Math.round(totalCost / totalQty), totalQty, totalCost };
+  }
+
+  function _renderPortfolio() {
+    const listEl = document.getElementById('portfolio-list');
+    const groups  = _pfGrouped();
+
+    if (!groups.length) {
+      document.getElementById('pf-summary-card').style.display = 'none';
+      listEl.innerHTML = `
+        <div class="pf-empty">
+          <div class="pf-empty-icon">📭</div>
+          <p>보유 종목이 없습니다.<br>종목 추가 버튼을 눌러 첫 종목을 등록해보세요.</p>
+        </div>`;
+      return;
+    }
+
+    const hasPrices = Object.keys(_pfPrices).length > 0;
+
+    if (hasPrices) {
+      let totalCost = 0, totalValue = 0;
+      for (const g of groups) {
+        const { totalCost: gc, totalQty } = _pfWeightedAvg(g.entries);
+        totalCost += gc;
+        if (_pfPrices[g.key]) totalValue += _pfPrices[g.key].price * totalQty;
+      }
+      const pnl      = totalValue - totalCost;
+      const pnlRate  = totalCost ? (pnl / totalCost * 100).toFixed(2) : '0.00';
+      const pnlSign  = pnl >= 0 ? '+' : '';
+      const pnlClass = pnl >= 0 ? 'rise' : 'fall';
+      document.getElementById('pf-summary-card').style.display = 'block';
+      document.getElementById('pf-summary').innerHTML = `
+        <div class="summary-item">
+          <div class="summary-label">총 매수금액</div>
+          <div class="summary-value">${(totalCost / 10000).toFixed(0)}만원</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">총 평가금액</div>
+          <div class="summary-value">${(totalValue / 10000).toFixed(0)}만원</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">평가손익</div>
+          <div class="summary-value ${pnlClass}">${pnlSign}${(pnl / 10000).toFixed(0)}만원</div>
+          <div class="summary-sub ${pnlClass}">${pnlSign}${pnlRate}%</div>
+        </div>`;
+    } else {
+      document.getElementById('pf-summary-card').style.display = 'none';
+    }
+
+    listEl.innerHTML = groups.map(g => {
+      const { avgPrice, totalQty, totalCost } = _pfWeightedAvg(g.entries);
+      const lp          = _pfPrices[g.key];
+      const marketLabel = g.market === 'J' ? '코스피' : '코스닥';
+
+      const priceHtml = lp ? (() => {
+        const sign     = lp.change >= 0 ? '+' : '';
+        const chgClass = lp.change >= 0 ? 'rise' : 'fall';
+        const mktBadge = stockDataService.isMarketOpen() ? '' : '<span class="market-closed">장마감</span>';
+        return `<div class="pf-price-block">
+          <div class="pf-current-price">${lp.price.toLocaleString()}원${mktBadge}</div>
+          <div class="pf-change ${chgClass}">${sign}${lp.change.toLocaleString()}원 (${sign}${lp.changeRate}%)</div>
+        </div>`;
+      })() : '<div class="pf-price-block"><div class="pf-no-price">시세 미조회</div></div>';
+
+      const evalValue = lp ? lp.price * totalQty : null;
+      const pnl       = evalValue !== null ? evalValue - totalCost : null;
+      const pnlRate   = pnl !== null && totalCost ? (pnl / totalCost * 100).toFixed(2) : null;
+      const pnlSign   = pnl !== null && pnl >= 0 ? '+' : '';
+      const pnlClass  = pnl !== null && pnl >= 0 ? 'rise' : 'fall';
+
+      const evalStats = evalValue !== null ? `
+        <div class="pf-stat-item">
+          <div class="pf-stat-label">평가금액</div>
+          <div class="pf-stat-value">${evalValue.toLocaleString()}원</div>
+        </div>
+        <div class="pf-stat-item">
+          <div class="pf-stat-label">평가손익</div>
+          <div class="pf-stat-value ${pnlClass}">${pnlSign}${pnl.toLocaleString()}원</div>
+        </div>
+        <div class="pf-stat-item">
+          <div class="pf-stat-label">수익률</div>
+          <div class="pf-stat-value ${pnlClass}">${pnlSign}${pnlRate}%</div>
+        </div>` : '';
+
+      const historyRows = g.entries.map(e => `
+        <div class="pf-history-row">
+          <div>
+            <div class="pf-history-info">${e.buy_price.toLocaleString()}원 × ${e.quantity}주</div>
+            <div class="pf-history-date">${e.buy_date || '날짜 미입력'}</div>
+          </div>
+          <button class="btn btn-secondary" style="padding:5px 10px;font-size:12px"
+            data-del="${e.id}">✕</button>
+        </div>`).join('');
+
+      return `
+        <div class="card">
+          <div class="pf-card-header">
+            <div>
+              <div class="pf-name">${g.name}</div>
+              <div class="pf-code">${g.code} <span class="market-badge">${marketLabel}</span></div>
+            </div>
+            ${priceHtml}
+          </div>
+          <div class="pf-stats">
+            <div class="pf-stat-item">
+              <div class="pf-stat-label">평균 매수가</div>
+              <div class="pf-stat-value">${avgPrice.toLocaleString()}원</div>
+            </div>
+            <div class="pf-stat-item">
+              <div class="pf-stat-label">보유 수량</div>
+              <div class="pf-stat-value">${totalQty.toLocaleString()}주</div>
+            </div>
+            <div class="pf-stat-item">
+              <div class="pf-stat-label">총 매수금액</div>
+              <div class="pf-stat-value">${totalCost.toLocaleString()}원</div>
+            </div>
+            ${evalStats}
+          </div>
+          <div class="pf-history">
+            <div class="pf-history-title">매수 이력 (${g.entries.length}건)</div>
+            ${historyRows}
+          </div>
+          <div class="pf-actions">
+            <button class="btn btn-secondary" data-response="${g.key}">📋 대응방안 요청</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('[data-del]').forEach(btn =>
+      btn.addEventListener('click', () => _deletePfEntry(Number(btn.dataset.del)))
+    );
+    listEl.querySelectorAll('[data-response]').forEach(btn =>
+      btn.addEventListener('click', () => _requestResponse(btn.dataset.response))
+    );
+  }
+
+  async function _loadPortfolio() {
+    _pfItems = await dbService.getAll('portfolio');
+    _renderPortfolio();
+  }
+
+  async function _refreshPfPrices() {
+    const groups = _pfGrouped();
+    if (!groups.length) return;
+
+    const btn = document.getElementById('btn-refresh-pf');
+    btn.disabled = true;
+    btn.textContent = '조회 중...';
+    document.getElementById('pf-msg').classList.remove('show');
+
+    try {
+      const [appkey, appsecret, proxyUrl] = await Promise.all([
+        dbService.getSetting('kis_app_key'),
+        dbService.getSetting('kis_app_secret'),
+        dbService.getSetting('proxy_url'),
+      ]);
+      if (!appkey || !appsecret || !proxyUrl)
+        throw new Error('KIS 설정을 먼저 저장해주세요. (설정 탭)');
+
+      const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+
+      for (let i = 0; i < groups.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 700));
+        const g = groups[i];
+        _pfPrices[g.key] = await stockDataService.getCurrentPrice(
+          g.code, g.market, token, appkey, appsecret, proxyUrl
+        );
+      }
+      _renderPortfolio();
+    } catch (err) {
+      _msg('pf-msg', '시세 조회 실패: ' + err.message, 'error');
+      console.error('[pf-refresh]', err);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔄 시세 갱신';
+    }
+  }
+
+  async function _addPfEntry() {
+    const code     = document.getElementById('new-code').value.trim().toUpperCase();
+    const market   = document.getElementById('new-market').value;
+    const name     = document.getElementById('new-name').value.trim();
+    const buyPrice = parseInt(document.getElementById('new-buy-price').value, 10);
+    const qty      = parseInt(document.getElementById('new-quantity').value, 10);
+    const buyDate  = document.getElementById('new-buy-date').value;
+
+    if (!code || !name)            { _msg('add-msg', '종목코드와 종목명을 입력하세요.', 'error'); return; }
+    if (!buyPrice || buyPrice < 1) { _msg('add-msg', '매수가를 올바르게 입력하세요.', 'error');   return; }
+    if (!qty || qty < 1)           { _msg('add-msg', '수량을 올바르게 입력하세요.', 'error');     return; }
+
+    try {
+      await dbService.put('portfolio', { code, market, name, buy_price: buyPrice, quantity: qty, buy_date: buyDate });
+      _pfItems = await dbService.getAll('portfolio');
+      ['new-code', 'new-name', 'new-buy-price', 'new-quantity', 'new-buy-date']
+        .forEach(id => { document.getElementById(id).value = ''; });
+      document.getElementById('add-stock-form').style.display = 'none';
+      _renderPortfolio();
+    } catch (err) {
+      _msg('add-msg', '추가 실패: ' + err.message, 'error');
+      console.error('[pf-add]', err);
+    }
+  }
+
+  async function _deletePfEntry(id) {
+    if (!confirm('이 매수 이력을 삭제하시겠습니까?')) return;
+    await dbService.deleteRecord('portfolio', id);
+    _pfItems = _pfItems.filter(i => i.id !== id);
+    _renderPortfolio();
+  }
+
+  // ── Dashboard ──
+
+  async function _loadDashboard() {
+    _pfItems = await dbService.getAll('portfolio');
+    _renderDashboard();
+  }
+
+  function _renderDashboard() {
+    const groups     = _pfGrouped();
+    const hasPrices  = Object.keys(_pfPrices).length > 0;
+    const summaryEl  = document.getElementById('dash-summary');
+    const stocksWrap = document.getElementById('dash-stocks-wrap');
+    const stocksEl   = document.getElementById('dash-stocks');
+
+    if (!groups.length) {
+      summaryEl.innerHTML =
+        '<p style="text-align:center;color:var(--sub);padding:30px 0">보유 종목이 없습니다.<br>내 종목 탭에서 종목을 추가해보세요.</p>';
+      stocksWrap.style.display = 'none';
+      return;
+    }
+
+    let totalCost = 0, totalValue = 0;
+    for (const g of groups) {
+      const { totalCost: gc, totalQty } = _pfWeightedAvg(g.entries);
+      totalCost += gc;
+      if (_pfPrices[g.key]) totalValue += _pfPrices[g.key].price * totalQty;
+    }
+
+    if (hasPrices) {
+      const pnl     = totalValue - totalCost;
+      const pnlRate = totalCost ? (pnl / totalCost * 100).toFixed(2) : '0.00';
+      const sign    = pnl >= 0 ? '+' : '';
+      const cls     = pnl >= 0 ? 'rise' : 'fall';
+      summaryEl.innerHTML = `
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-label">총 매수금액</div>
+            <div class="summary-value">${(totalCost / 10000).toFixed(0)}만원</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">총 평가금액</div>
+            <div class="summary-value">${(totalValue / 10000).toFixed(0)}만원</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">평가손익</div>
+            <div class="summary-value ${cls}">${sign}${(pnl / 10000).toFixed(0)}만원</div>
+            <div class="summary-sub ${cls}">${sign}${pnlRate}%</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">보유 종목 수</div>
+            <div class="summary-value">${groups.length}개</div>
+          </div>
+        </div>`;
+
+      stocksWrap.style.display = 'block';
+      stocksEl.innerHTML = groups.map(g => {
+        const { avgPrice, totalQty } = _pfWeightedAvg(g.entries);
+        const lp  = _pfPrices[g.key];
+        if (!lp) return '';
+        const pnl      = (lp.price - avgPrice) * totalQty;
+        const pnlRate  = ((lp.price - avgPrice) / avgPrice * 100).toFixed(2);
+        const sign     = lp.change >= 0 ? '+' : '';
+        const cls      = lp.change >= 0 ? 'rise' : 'fall';
+        const mktLabel = g.market === 'J' ? '코스피' : '코스닥';
+        const mktBadge = stockDataService.isMarketOpen() ? '' : '<span class="market-closed">장마감</span>';
+        return `
+          <div class="dash-stock-row">
+            <div>
+              <div class="dash-stock-name">${g.name}</div>
+              <div class="dash-stock-meta">${g.code} <span class="market-badge">${mktLabel}</span> · ${totalQty.toLocaleString()}주</div>
+            </div>
+            <div class="dash-stock-price">
+              <div class="dash-stock-current">${lp.price.toLocaleString()}원${mktBadge}</div>
+              <div class="dash-stock-change ${cls}">${sign}${lp.changeRate}% · ${pnl >= 0 ? '+' : ''}${(pnl / 10000).toFixed(1)}만원</div>
+            </div>
+          </div>`;
+      }).join('');
+    } else {
+      summaryEl.innerHTML = `
+        <div class="summary-grid">
+          <div class="summary-item">
+            <div class="summary-label">총 매수금액</div>
+            <div class="summary-value">${(totalCost / 10000).toFixed(0)}만원</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">보유 종목 수</div>
+            <div class="summary-value">${groups.length}개</div>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--sub);margin-top:12px">🔄 시세 갱신 버튼을 눌러 실시간 평가금액을 확인하세요.</p>`;
+      stocksWrap.style.display = 'none';
+    }
+  }
+
+  async function _refreshDashboard() {
+    const groups = _pfGrouped();
+    if (!groups.length) { _msg('dash-msg', '보유 종목이 없습니다.', 'info'); return; }
+
+    const btn = document.getElementById('btn-dash-refresh');
+    btn.disabled = true; btn.textContent = '조회 중...';
+    document.getElementById('dash-msg').classList.remove('show');
+
+    try {
+      const [appkey, appsecret, proxyUrl] = await Promise.all([
+        dbService.getSetting('kis_app_key'),
+        dbService.getSetting('kis_app_secret'),
+        dbService.getSetting('proxy_url'),
+      ]);
+      if (!appkey || !appsecret || !proxyUrl)
+        throw new Error('KIS 설정을 먼저 저장해주세요. (설정 탭)');
+
+      const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+      for (let i = 0; i < groups.length; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 700));
+        const g = groups[i];
+        _pfPrices[g.key] = await stockDataService.getCurrentPrice(
+          g.code, g.market, token, appkey, appsecret, proxyUrl
+        );
+      }
+      _renderDashboard();
+    } catch (err) {
+      _msg('dash-msg', '시세 조회 실패: ' + err.message, 'error');
+      console.error('[dash-refresh]', err);
+    } finally {
+      btn.disabled = false; btn.textContent = '🔄 시세 갱신';
+    }
+  }
+
+  async function _getDashBriefing() {
+    const geminiKey = await dbService.getSetting('gemini_api_key');
+    if (!geminiKey) { alert('Gemini API 키를 먼저 설정해주세요. (설정 탭)'); return; }
+
+    const btn = document.getElementById('btn-dash-briefing');
+    btn.disabled = true; btn.textContent = '분석 중...';
+
+    const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const sysPrompt = `당신은 국내 주식시장 시황 브리핑 전문가입니다.
+알고 있는 가장 최근 정보를 바탕으로 한국 주식시장(코스피/코스닥) 시황 브리핑을 작성하세요.
+
+출력 형식:
+## 오늘의 시황 브리핑
+
+**시장 분위기**: (한 줄 요약)
+
+**주요 이슈**
+1. ...
+2. ...
+3. ...
+
+**주목할 섹터/테마**
+- ...
+
+**투자 시 유의사항**
+- ...
+
+※ 본 브리핑은 AI 학습 데이터 기반이며 실시간 시황이 아닐 수 있습니다.`;
+
+    try {
+      const result = await aiService.callAI(
+        sysPrompt,
+        `오늘 ${today} 기준 한국 주식시장 시황 브리핑을 작성해주세요.`,
+        geminiKey
+      );
+      document.getElementById('dash-briefing-content').innerHTML =
+        DOMPurify.sanitize(marked.parse(result));
+
+      await dbService.put('analysis_history', {
+        type: '시황브리핑', target: '오늘 시황',
+        summary: result.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
+        full_report: result,
+        stock_data: null, rec_data: null, memo: '',
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      const txt = err.message === 'QUOTA_EXCEEDED'
+        ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
+        : '브리핑 실패: ' + err.message;
+      document.getElementById('dash-briefing-content').innerHTML =
+        `<p style="color:var(--rise);font-size:13px">${txt}</p>`;
+      console.error('[briefing]', err);
+    } finally {
+      btn.disabled = false; btn.textContent = '브리핑 받기';
+    }
+  }
+
+  // ── Verify ──
+
+  let _verifyItems = [];
+  let _vdSelected  = null;
+
+  async function _loadVerify() {
+    _verifyItems = await dbService.getAll('verification');
+    _verifyItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    _renderVerify();
+    _checkPendingVerify();
+  }
+
+  function _renderVerify() {
+    const total   = _verifyItems.length;
+    const success = _verifyItems.filter(i => i.status === '성공').length;
+    const fail    = _verifyItems.filter(i => i.status === '실패' || i.status === '손절').length;
+    const ongoing = total - success - fail;
+    const winRate = (success + fail) > 0 ? Math.round(success / (success + fail) * 100) : null;
+
+    const completed = _verifyItems.filter(i => ['성공', '실패', '손절'].includes(i.status));
+    let avgReturn = null;
+    if (completed.length) {
+      const rates = completed.map(i => {
+        try { const c = JSON.parse(i.checks); return c.length ? c[c.length - 1].change_rate : 0; }
+        catch { return 0; }
+      });
+      avgReturn = (rates.reduce((a, b) => a + b, 0) / rates.length).toFixed(2);
+    }
+
+    document.getElementById('verify-stats').innerHTML = `
+      <div class="verify-stats">
+        <div><div class="verify-stat-label">총 추천</div><div class="verify-stat-value">${total}건</div></div>
+        <div><div class="verify-stat-label">성공</div><div class="verify-stat-value rise">${success}</div></div>
+        <div><div class="verify-stat-label">실패/손절</div><div class="verify-stat-value fall">${fail}</div></div>
+        <div><div class="verify-stat-label">진행중</div><div class="verify-stat-value" style="color:var(--accent)">${ongoing}</div></div>
+        <div><div class="verify-stat-label">성공률</div><div class="verify-stat-value ${winRate !== null && winRate >= 50 ? 'rise' : 'fall'}">${winRate !== null ? winRate + '%' : '—'}</div></div>
+        <div><div class="verify-stat-label">평균 수익률</div><div class="verify-stat-value ${avgReturn !== null && Number(avgReturn) >= 0 ? 'rise' : 'fall'}">${avgReturn !== null ? (Number(avgReturn) >= 0 ? '+' : '') + avgReturn + '%' : '—'}</div></div>
+      </div>`;
+
+    const histEl = document.getElementById('verify-history-list');
+    if (!total) {
+      histEl.innerHTML = '<div class="hist-empty">검증 이력이 없습니다.<br><span style="font-size:12px">종목 발굴 리포트에서 검증 등록 후 여기에 표시됩니다.</span></div>';
+      return;
+    }
+
+    histEl.innerHTML = `
+      <table class="verify-table">
+        <thead><tr>
+          <th>종목</th><th>추천일</th><th>추천가</th><th>목표가</th><th>손절가</th><th>상태</th><th>주차</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${_verifyItems.map(item => {
+            const checks  = (() => { try { return JSON.parse(item.checks); } catch { return []; } })();
+            const recDate = new Date(item.rec_date).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+            return `<tr>
+              <td><strong>${item.stock_name}</strong><br><span style="font-size:11px;color:var(--sub)">${item.stock_code}</span></td>
+              <td>${recDate}</td>
+              <td>${item.rec_price.toLocaleString()}원</td>
+              <td>${item.target_price.toLocaleString()}원</td>
+              <td>${item.stop_loss.toLocaleString()}원</td>
+              <td><span class="status-badge status-${item.status}">${item.status}</span></td>
+              <td>${checks.length}주차</td>
+              <td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" data-vd="${item.id}">상세</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+
+    histEl.querySelectorAll('[data-vd]').forEach(btn =>
+      btn.addEventListener('click', () => _openVerifyDetail(Number(btn.dataset.vd)))
+    );
+  }
+
+  function _checkPendingVerify() {
+    const today   = new Date().toISOString().slice(0, 10);
+    const pending = _verifyItems.filter(i =>
+      (i.status === '대기' || i.status === '진행중') && i.next_check_date <= today
+    );
+    const wrap   = document.getElementById('verify-pending-wrap');
+    const listEl = document.getElementById('verify-pending-list');
+
+    if (!pending.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+
+    listEl.innerHTML = pending.map(item => {
+      const checks = (() => { try { return JSON.parse(item.checks); } catch { return []; } })();
+      return `
+        <div class="pending-row">
+          <div>
+            <div style="font-weight:600">${item.stock_name} (${item.stock_code})</div>
+            <div style="font-size:12px;color:var(--sub)">추천가 ${item.rec_price.toLocaleString()}원 · ${checks.length + 1}주차 검증 예정</div>
+          </div>
+          <button class="btn btn-primary" style="padding:6px 14px;font-size:13px" data-verify-id="${item.id}">검증 실행</button>
+        </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('[data-verify-id]').forEach(btn =>
+      btn.addEventListener('click', () => _runSingleVerify(Number(btn.dataset.verifyId)))
+    );
+  }
+
+  async function _runSingleVerify(id) {
+    const item = _verifyItems.find(i => i.id === id);
+    if (!item) return;
+
+    const [appkey, appsecret, proxyUrl, geminiKey] = await Promise.all([
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+      dbService.getSetting('gemini_api_key'),
+    ]);
+    if (!appkey || !appsecret || !proxyUrl)
+      throw new Error('KIS 설정을 먼저 저장해주세요. (설정 탭)');
+
+    _msg('verify-run-msg', `${item.stock_name} 검증 중...`, 'info');
+
+    try {
+      const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+      const priceData = await stockDataService.getCurrentPrice(
+        item.stock_code, item.market || 'J', token, appkey, appsecret, proxyUrl
+      );
+      const currentPrice = priceData.price;
+      const changeRate   = (currentPrice - item.rec_price) / item.rec_price * 100;
+
+      const checks = (() => { try { return JSON.parse(item.checks); } catch { return []; } })();
+      const week   = checks.length + 1;
+
+      const newCheck = {
+        week,
+        check_date:  new Date().toISOString().slice(0, 10),
+        price:       currentPrice,
+        change_rate: Math.round(changeRate * 100) / 100,
+        result:      changeRate > 1 ? '상승' : changeRate < -1 ? '하락' : '횡보',
+        ai_comment:  '',
+      };
+      checks.push(newCheck);
+
+      let newStatus = (item.status === '대기') ? '진행중' : item.status;
+      if      (currentPrice >= item.target_price)           newStatus = '성공';
+      else if (currentPrice <= item.stop_loss)              newStatus = '손절';
+      else if (checks.length >= 4 && changeRate < 0)       newStatus = '실패';
+      else if (checks.length >= 8)                          newStatus = '실패';
+      else                                                  newStatus = '진행중';
+
+      const isTerminal = ['성공', '실패', '손절'].includes(newStatus);
+
+      if (!isTerminal && geminiKey) {
+        const prevHistory = checks.slice(0, -1).map(c =>
+          `${c.week}주차 (${c.check_date}): ${c.price.toLocaleString()}원 (${c.change_rate >= 0 ? '+' : ''}${c.change_rate}%)`
+        ).join('\n');
+
+        const toTarget = ((item.target_price - currentPrice) / currentPrice * 100).toFixed(1);
+        const toStop   = ((currentPrice - item.stop_loss)   / currentPrice * 100).toFixed(1);
+
+        const verifyMsg = `=== 검증 대상 ===
+종목: ${item.stock_name} (${item.stock_code})
+추천일: ${item.rec_date.slice(0, 10)} | 추천가: ${item.rec_price.toLocaleString()}원 | 목표가: ${item.target_price.toLocaleString()}원 | 손절가: ${item.stop_loss.toLocaleString()}원
+
+=== 현재 상황 ===
+현재가: ${currentPrice.toLocaleString()}원
+추천가 대비 수익률: ${changeRate >= 0 ? '+' : ''}${changeRate.toFixed(2)}%
+${week}주차 검증 | 목표가까지: +${toTarget}% | 손절가까지: -${toStop}%
+
+=== 과거 이력 ===
+${prevHistory || '없음 (첫 검증)'}`;
+
+        const sysPr = `당신은 주식 추천 결과 검증 전문 애널리스트입니다. 추천가·목표가·손절가 대비 현재 주가를 평가하세요.
+반드시 아래 형식으로 출력하세요:
+
+**${week}주차 검증 결과**: 상승 / 하락 / 횡보
+
+**현황 평가** (2~3줄)
+
+**다음 주 전망**
+- 긍정 시나리오: ...
+- 부정 시나리오: ...
+
+**권고**: 계속 보유 / 분할매도 고려 / 손절 고려
+
+간결하게 작성하세요.`;
+
+        try {
+          checks[checks.length - 1].ai_comment = await aiService.callAI(sysPr, verifyMsg, geminiKey);
+        } catch (e) {
+          checks[checks.length - 1].ai_comment = '(AI 코멘트 생성 실패)';
+          console.warn('[verify-ai]', e.message);
+        }
+      }
+
+      const nextCheckDate = isTerminal
+        ? item.next_check_date
+        : new Date(Date.now() + 7 * 24 * 3600000).toISOString().slice(0, 10);
+
+      const updated = { ...item, status: newStatus, checks: JSON.stringify(checks), next_check_date: nextCheckDate };
+      await dbService.put('verification', updated);
+      const idx = _verifyItems.findIndex(i => i.id === id);
+      if (idx >= 0) _verifyItems[idx] = updated;
+
+      _msg('verify-run-msg', `✓ ${item.stock_name} ${week}주차 검증 완료 — ${newStatus}`, 'success');
+      _renderVerify();
+      _checkPendingVerify();
+    } catch (err) {
+      _msg('verify-run-msg', `${item.stock_name} 검증 실패: ` + err.message, 'error');
+      console.error('[verify-run]', err);
+    }
+  }
+
+  async function _runAllVerify() {
+    const today   = new Date().toISOString().slice(0, 10);
+    const pending = _verifyItems.filter(i =>
+      (i.status === '대기' || i.status === '진행중') && i.next_check_date <= today
+    );
+    const btn = document.getElementById('btn-run-verify-all');
+    btn.disabled = true; btn.textContent = '검증 중...';
+    document.getElementById('verify-run-msg').classList.remove('show');
+
+    for (let i = 0; i < pending.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 700));
+      try { await _runSingleVerify(pending[i].id); } catch {}
+    }
+    btn.disabled = false; btn.textContent = '▶ 전체 검증 실행';
+  }
+
+  function _openVerifyDetail(id) {
+    const item = _verifyItems.find(i => i.id === id);
+    if (!item) return;
+    _vdSelected = item;
+
+    const checks = (() => { try { return JSON.parse(item.checks); } catch { return []; } })();
+    const mktLabel = (item.market || 'J') === 'J' ? '코스피' : '코스닥';
+
+    document.getElementById('vd-modal-title').textContent =
+      `${item.stock_name} (${item.stock_code}) 검증 상세`;
+    document.getElementById('vd-modal-meta').innerHTML =
+      `<span class="market-badge">${mktLabel}</span> · 추천일: ${item.rec_date.slice(0, 10)}<br>
+       추천가: ${item.rec_price.toLocaleString()}원 | 목표가: ${item.target_price.toLocaleString()}원 | 손절가: ${item.stop_loss.toLocaleString()}원<br>
+       상태: <span class="status-badge status-${item.status}">${item.status}</span> · 다음 검증일: ${item.next_check_date}`;
+
+    const checksEl = document.getElementById('vd-modal-checks');
+    if (!checks.length) {
+      checksEl.innerHTML = '<p style="font-size:13px;color:var(--sub);padding:8px 0">아직 검증 이력이 없습니다.</p>';
+    } else {
+      checksEl.innerHTML = checks.map(c => {
+        const cls  = c.change_rate >= 0 ? 'rise' : 'fall';
+        const sign = c.change_rate >= 0 ? '+' : '';
+        return `
+          <div class="card" style="margin-bottom:10px;padding:14px 16px">
+            <div class="row" style="justify-content:space-between;margin-bottom:8px">
+              <strong>${c.week}주차 — ${c.check_date}</strong>
+              <span class="${cls}" style="font-weight:700">${sign}${c.change_rate}% (${c.price.toLocaleString()}원)</span>
+            </div>
+            ${c.ai_comment ? `<div class="report-box" style="font-size:13px">${DOMPurify.sanitize(marked.parse(c.ai_comment))}</div>` : '<p style="font-size:12px;color:var(--sub)">AI 코멘트 없음</p>'}
+          </div>`;
+      }).join('');
+    }
+
+    document.getElementById('verify-detail-modal').classList.add('show');
+  }
+
+  async function _deleteVerifyItem() {
+    if (!_vdSelected) return;
+    if (!confirm(`"${_vdSelected.stock_name}" 검증 이력을 삭제하시겠습니까?`)) return;
+    try {
+      await dbService.deleteRecord('verification', _vdSelected.id);
+      _verifyItems = _verifyItems.filter(i => i.id !== _vdSelected.id);
+      _vdSelected  = null;
+      document.getElementById('verify-detail-modal').classList.remove('show');
+      _renderVerify();
+      _checkPendingVerify();
+    } catch (err) {
+      alert('삭제 실패: ' + err.message);
+    }
+  }
+
+  // ── History ──
+
+  let _histItems    = [];
+  let _histSelected = null;
+
+  async function _loadHistory() {
+    _histItems = await dbService.getAll('analysis_history');
+    _histItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    _renderHistory();
+  }
+
+  function _renderHistory() {
+    const filter = document.getElementById('hist-filter').value;
+    const listEl = document.getElementById('hist-list');
+    const items  = filter ? _histItems.filter(i => i.type === filter) : _histItems;
+
+    if (!items.length) {
+      listEl.innerHTML = `<div class="card"><div class="hist-empty">분석 이력이 없습니다.<br><span style="font-size:12px">종목 발굴·대응방안·시황 브리핑 실행 후 자동으로 저장됩니다.</span></div></div>`;
+      return;
+    }
+
+    listEl.innerHTML = `<div class="card" style="padding:0;overflow:hidden">` +
+      items.map(item => {
+        const typeClass = item.type === '종목발굴' ? '발굴' : item.type === '대응방안' ? '대응' : '브리핑';
+        const date = new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return `
+          <div class="hist-item" data-hist-id="${item.id}">
+            <div class="hist-item-header">
+              <div class="hist-item-left">
+                <span class="hist-type-badge hist-type-${typeClass}">${item.type}</span>
+                <span class="hist-target">${item.target}</span>
+              </div>
+              <span class="hist-date">${date}</span>
+            </div>
+            <div class="hist-summary">${item.summary || ''}</div>
+          </div>`;
+      }).join('') + `</div>`;
+
+    listEl.querySelectorAll('[data-hist-id]').forEach(el =>
+      el.addEventListener('click', () => _openHistoryModal(Number(el.dataset.histId)))
+    );
+  }
+
+  function _openHistoryModal(id) {
+    const item = _histItems.find(i => i.id === id);
+    if (!item) return;
+    _histSelected = item;
+
+    document.getElementById('hist-modal-title').textContent = `${item.type} — ${item.target}`;
+    document.getElementById('hist-modal-meta').textContent  = `분석일시: ${new Date(item.created_at).toLocaleString('ko-KR')}`;
+    document.getElementById('hist-modal-memo').value        = item.memo || '';
+    document.getElementById('hist-modal-msg').classList.remove('show');
+
+    document.getElementById('hist-modal-report').innerHTML =
+      DOMPurify.sanitize(marked.parse(item.full_report || ''));
+
+    const stockWrap = document.getElementById('hist-modal-stock-wrap');
+    if (item.stock_data) {
+      try {
+        const sd  = JSON.parse(item.stock_data);
+        const ctx = (sd.priceData && sd.chartData)
+          ? stockDataService.buildStockContext(sd.priceData, sd.chartData)
+          : item.stock_data;
+        document.getElementById('hist-modal-stock').textContent = ctx;
+        stockWrap.style.display = 'block';
+      } catch { stockWrap.style.display = 'none'; }
+    } else {
+      stockWrap.style.display = 'none';
+    }
+
+    document.getElementById('history-modal').classList.add('show');
+  }
+
+  async function _saveHistMemo() {
+    if (!_histSelected) return;
+    const memo = document.getElementById('hist-modal-memo').value;
+    try {
+      await dbService.put('analysis_history', { ..._histSelected, memo });
+      _histSelected.memo = memo;
+      const idx = _histItems.findIndex(i => i.id === _histSelected.id);
+      if (idx >= 0) _histItems[idx].memo = memo;
+      _msg('hist-modal-msg', '메모가 저장되었습니다.', 'success');
+    } catch (err) {
+      _msg('hist-modal-msg', '저장 실패: ' + err.message, 'error');
+    }
+  }
+
+  async function _deleteHistItem() {
+    if (!_histSelected) return;
+    if (!confirm(`"${_histSelected.target}" 이력을 삭제하시겠습니까?`)) return;
+    try {
+      await dbService.deleteRecord('analysis_history', _histSelected.id);
+      _histItems = _histItems.filter(i => i.id !== _histSelected.id);
+      _histSelected = null;
+      document.getElementById('history-modal').classList.remove('show');
+      _renderHistory();
+    } catch (err) {
+      _msg('hist-modal-msg', '삭제 실패: ' + err.message, 'error');
+    }
+  }
+
+  // ── Discover ──
+
+  function _renderSteps(containerId, labels, states) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = labels.map((label, i) => {
+      const s = states[i];
+      const icon = s === 'done' ? '✓' : s === 'active' ? '⏳' : s === 'error' ? '✕' : '○';
+      return `<div class="disc-step ${s !== 'pending' ? s : ''}"><span class="disc-step-icon">${icon}</span><span>${label}</span></div>`;
+    }).join('');
+  }
+
+  async function _startDiscover() {
+    const theme  = document.getElementById('disc-theme').value.trim();
+    const ticker = document.getElementById('disc-ticker').value.trim().toUpperCase();
+    const market = document.getElementById('disc-market').value;
+    const period = document.querySelector('input[name="disc-period"]:checked')?.value || '스윙';
+    const risk   = document.querySelector('input[name="disc-risk"]:checked')?.value  || '중립형';
+
+    if (!theme) { _msg('disc-msg', '테마/키워드를 입력하세요.', 'error'); return; }
+    if (_analyzing) { _msg('disc-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
+
+    const geminiKey = await dbService.getSetting('gemini_api_key');
+    if (!geminiKey) { _msg('disc-msg', 'Gemini API 키를 설정해주세요. (설정 탭)', 'error'); return; }
+
+    const [appkey, appsecret, proxyUrl] = await Promise.all([
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+    ]);
+
+    const btn = document.getElementById('btn-start-discover');
+    _analyzing = true;
+    btn.disabled = true; btn.textContent = '분석 중...';
+    document.getElementById('disc-msg').classList.remove('show');
+    document.getElementById('discover-result').style.display = 'none';
+    document.getElementById('discover-progress').style.display = 'block';
+    _discStepState = Array(7).fill('pending');
+    _renderSteps('disc-steps', DISC_LABELS, _discStepState);
+
+    try {
+      const result = await analysisTeam.runDiscovery({
+        ticker, market, stockName: '', theme, period, riskStyle: risk,
+        apiKey: geminiKey, appkey, appsecret, proxyUrl,
+        onProgress: (idx, _label, state = 'active') => {
+          _discStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
+          _renderSteps('disc-steps', DISC_LABELS, _discStepState);
+        },
+      });
+
+      const recData = analysisTeam.parseRecData(result.member4Output, ticker, ticker || theme);
+      recData.market = market;
+      _discResult = { ...result, recData, ticker, market };
+
+      await dbService.put('analysis_history', {
+        type: '종목발굴', target: ticker || theme,
+        summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
+        full_report: result.report,
+        stock_data: result.priceData ? JSON.stringify({ priceData: result.priceData, chartData: result.chartData }) : null,
+        rec_data: JSON.stringify(recData),
+        memo: '', created_at: new Date().toISOString(),
+      });
+
+      document.getElementById('disc-report-content').innerHTML =
+        DOMPurify.sanitize(marked.parse(result.report));
+      document.getElementById('discover-result').style.display = 'block';
+      document.getElementById('btn-disc-verify').style.display = result.eliminated ? 'none' : '';
+      document.getElementById('btn-disc-add-portfolio').style.display = (ticker && !result.eliminated) ? '' : 'none';
+    } catch (err) {
+      const txt = err.message === 'QUOTA_EXCEEDED'
+        ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
+        : '분석 실패: ' + err.message;
+      _msg('disc-msg', txt, 'error');
+      console.error('[discover]', err);
+    } finally {
+      _analyzing = false;
+      btn.disabled = false; btn.textContent = '🔍 분석 시작';
+    }
+  }
+
+  function _discAddToPortfolio() {
+    if (!_discResult?.ticker) return;
+    switchTab('portfolio');
+    document.getElementById('add-stock-form').style.display = 'block';
+    document.getElementById('new-code').value   = _discResult.ticker;
+    document.getElementById('new-market').value = _discResult.market;
+    document.getElementById('new-buy-date').valueAsDate = new Date();
+  }
+
+  function _showVerifyModal(recData) {
+    document.getElementById('vm-code').value         = recData.code || '';
+    document.getElementById('vm-market').value       = recData.market || 'J';
+    document.getElementById('vm-name').value         = recData.name || '';
+    document.getElementById('vm-rec-price').value    = recData.rec_price || '';
+    document.getElementById('vm-target-price').value = recData.target_price || '';
+    document.getElementById('vm-stop-loss').value    = recData.stop_loss || '';
+    document.getElementById('vm-msg').classList.remove('show');
+    document.getElementById('verify-modal').classList.add('show');
+  }
+
+  async function _confirmVerifyRegister() {
+    const code        = document.getElementById('vm-code').value.trim();
+    const market      = document.getElementById('vm-market').value;
+    const name        = document.getElementById('vm-name').value.trim();
+    const recPrice    = parseInt(document.getElementById('vm-rec-price').value, 10);
+    const targetPrice = parseInt(document.getElementById('vm-target-price').value, 10);
+    const stopLoss    = parseInt(document.getElementById('vm-stop-loss').value, 10);
+
+    if (!code || !recPrice || !targetPrice || !stopLoss) {
+      _msg('vm-msg', '모든 항목을 입력하세요.', 'error'); return;
+    }
+
+    const now = new Date();
+    const nextCheck = new Date(now.getTime() + 7 * 24 * 3600000).toISOString().slice(0, 10);
+    try {
+      await dbService.put('verification', {
+        analysis_id: null, stock_code: code, market, stock_name: name,
+        rec_price: recPrice, target_price: targetPrice, stop_loss: stopLoss,
+        rec_date: now.toISOString(), next_check_date: nextCheck,
+        status: '대기', checks: '[]', created_at: now.toISOString(),
+      });
+      _msg('vm-msg', `✓ ${name || code} 검증 등록 완료! 다음 검증일: ${nextCheck}`, 'success');
+      setTimeout(() => document.getElementById('verify-modal').classList.remove('show'), 1800);
+    } catch (err) {
+      _msg('vm-msg', '등록 실패: ' + err.message, 'error');
+      console.error('[verify-reg]', err);
+    }
+  }
+
+  // ── Response (대응방안) ──
+
+  async function _requestResponse(key) {
+    const group = _pfGrouped().find(g => g.key === key);
+    if (!group) return;
+
+    const geminiKey = await dbService.getSetting('gemini_api_key');
+    const [appkey, appsecret, proxyUrl] = await Promise.all([
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+    ]);
+    if (!geminiKey || !appkey || !appsecret || !proxyUrl) {
+      alert('API 키와 프록시 URL을 먼저 설정해주세요. (설정 탭)'); return;
+    }
+
+    const { avgPrice, totalQty } = _pfWeightedAvg(group.entries);
+    const lp = _pfPrices[key];
+    const pnlRate = lp ? ((lp.price - avgPrice) / avgPrice * 100).toFixed(2) : '0.00';
+
+    document.getElementById('response-modal-title').textContent = `📋 ${group.name} 대응방안`;
+    document.getElementById('response-modal-report').style.display = 'none';
+    document.getElementById('response-modal-report').innerHTML = '';
+    _respStepState = Array(6).fill('pending');
+    _renderSteps('response-modal-steps', RESP_LABELS, _respStepState);
+    document.getElementById('response-modal').classList.add('show');
+
+    try {
+      const result = await analysisTeam.runResponse({
+        ticker: group.code, market: group.market,
+        stockName: group.name, avgPrice, totalQty, pnlRate,
+        apiKey: geminiKey, appkey, appsecret, proxyUrl,
+        onProgress: (idx, _label, state = 'active') => {
+          _respStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
+          _renderSteps('response-modal-steps', RESP_LABELS, _respStepState);
+        },
+      });
+
+      const rEl = document.getElementById('response-modal-report');
+      rEl.innerHTML = DOMPurify.sanitize(marked.parse(result.report));
+      rEl.style.display = 'block';
+
+      await dbService.put('analysis_history', {
+        type: '대응방안', target: group.name,
+        summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
+        full_report: result.report,
+        stock_data: JSON.stringify({ priceData: result.priceData, chartData: result.chartData }),
+        rec_data: null, memo: '', created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      const txt = err.message === 'QUOTA_EXCEEDED'
+        ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
+        : '분석 실패: ' + err.message;
+      _msg('response-modal-msg', txt, 'error');
+      console.error('[response]', err);
+    }
+  }
+
+  function _bindEvents() {
+    document.querySelectorAll('[data-tab]').forEach(el =>
+      el.addEventListener('click', () => switchTab(el.dataset.tab))
+    );
+
+    // 대시보드
+    document.getElementById('btn-dash-refresh').addEventListener('click', _refreshDashboard);
+    document.getElementById('btn-dash-briefing').addEventListener('click', _getDashBriefing);
+
+    // 설정
+    document.getElementById('btn-save').addEventListener('click', _saveSettings);
+    document.getElementById('btn-issue-token').addEventListener('click', _issueToken);
+    document.getElementById('btn-test-kis').addEventListener('click', _testKis);
+    document.getElementById('btn-clear').addEventListener('click', _clearAll);
+
+    // 포트폴리오
+    document.getElementById('btn-refresh-pf').addEventListener('click', _refreshPfPrices);
+    document.getElementById('btn-show-add').addEventListener('click', () => {
+      document.getElementById('add-stock-form').style.display = 'block';
+      document.getElementById('new-buy-date').valueAsDate = new Date();
+    });
+    document.getElementById('btn-confirm-add').addEventListener('click', _addPfEntry);
+    document.getElementById('btn-cancel-add').addEventListener('click', () => {
+      document.getElementById('add-stock-form').style.display = 'none';
+    });
+
+    // 검증
+    document.getElementById('btn-run-verify-all').addEventListener('click', _runAllVerify);
+    document.getElementById('btn-vd-delete').addEventListener('click', _deleteVerifyItem);
+    document.getElementById('btn-close-vd-modal').addEventListener('click', () => {
+      document.getElementById('verify-detail-modal').classList.remove('show');
+    });
+
+    // 분석 이력
+    document.getElementById('hist-filter').addEventListener('change', _renderHistory);
+    document.getElementById('btn-hist-memo-save').addEventListener('click', _saveHistMemo);
+    document.getElementById('btn-hist-delete').addEventListener('click', _deleteHistItem);
+    document.getElementById('btn-close-history-modal').addEventListener('click', () => {
+      document.getElementById('history-modal').classList.remove('show');
+    });
+
+    // 종목 발굴
+    document.getElementById('btn-start-discover').addEventListener('click', _startDiscover);
+    document.getElementById('btn-disc-add-portfolio').addEventListener('click', _discAddToPortfolio);
+    document.getElementById('btn-disc-verify').addEventListener('click', () => {
+      if (_discResult) _showVerifyModal(_discResult.recData);
+    });
+
+    // 검증 모달
+    document.getElementById('btn-cancel-verify').addEventListener('click', () => {
+      document.getElementById('verify-modal').classList.remove('show');
+    });
+    document.getElementById('btn-confirm-verify').addEventListener('click', _confirmVerifyRegister);
+
+    // 대응방안 모달
+    document.getElementById('btn-close-response-modal').addEventListener('click', () => {
+      document.getElementById('response-modal').classList.remove('show');
+    });
+
+    // ESC 키로 모달 닫기
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll('.modal-overlay.show').forEach(m => m.classList.remove('show'));
+    });
+
+    // 모달 배경(오버레이) 클릭으로 닫기
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.classList.remove('show');
+      });
+    });
+  }
+
+  async function init() {
+    _bindEvents();
+    const ready = await _checkSetup();
+    switchTab(ready ? 'dashboard' : 'settings');
+  }
+
+  return { init, switchTab };
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+  ui.init().catch(err => {
+    console.error('초기화 실패:', err);
+    document.body.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#0f0f0f;color:#e0e0e0;text-align:center;padding:20px;font-family:sans-serif">
+        <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+        <h2 style="margin-bottom:12px;font-size:20px">앱 초기화 오류</h2>
+        <p style="color:#888;font-size:14px;margin-bottom:24px;max-width:360px">데이터베이스 접근이 실패했습니다.<br>페이지를 새로고침해 주세요.</p>
+        <button onclick="location.reload()" style="padding:10px 24px;background:#4a9eff;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:600">새로고침</button>
+        <details style="margin-top:20px;font-size:12px;color:#555"><summary>오류 상세</summary><pre style="margin-top:8px;text-align:left">${err.message}</pre></details>
+      </div>`;
+  });
+});
+</script>
+
+<!-- 검증 상세 모달 -->
+<div id="verify-detail-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-title" id="vd-modal-title"></div>
+    <div id="vd-modal-meta" style="font-size:12px;color:var(--sub);margin-bottom:16px;line-height:1.8"></div>
+    <div id="vd-modal-checks"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger"    id="btn-vd-delete">삭제</button>
+      <button class="btn btn-secondary" id="btn-close-vd-modal">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 검증 등록 모달 -->
+<div id="verify-modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">✅ 검증 대상 등록</div>
+    <p style="font-size:13px;color:var(--sub);margin-bottom:16px">팀원4 분석 기반 값입니다. 확인 후 수정하세요.</p>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label>종목코드</label>
+        <input type="text" id="vm-code" />
+      </div>
+      <div class="form-group">
+        <label>시장</label>
+        <select id="vm-market">
+          <option value="J">코스피</option>
+          <option value="Q">코스닥</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>종목명</label>
+      <input type="text" id="vm-name" />
+    </div>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label>매수가 (원)</label>
+        <input type="number" id="vm-rec-price" min="1" />
+      </div>
+      <div class="form-group">
+        <label>목표가 (원)</label>
+        <input type="number" id="vm-target-price" min="1" />
+      </div>
+      <div class="form-group">
+        <label>손절가 (원)</label>
+        <input type="number" id="vm-stop-loss" min="1" />
+      </div>
+    </div>
+    <div id="vm-msg" class="msg"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btn-cancel-verify">취소</button>
+      <button class="btn btn-primary"   id="btn-confirm-verify">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 분석 이력 상세 모달 -->
+<div id="history-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:680px">
+    <div class="modal-title" id="hist-modal-title"></div>
+    <div id="hist-modal-meta" style="font-size:12px;color:var(--sub);margin-bottom:14px"></div>
+
+    <div id="hist-modal-stock-wrap" style="display:none;margin-bottom:14px">
+      <details>
+        <summary>📊 분석 당시 실시간 데이터 보기</summary>
+        <pre id="hist-modal-stock" class="hist-stock-pre"></pre>
+      </details>
+    </div>
+
+    <div id="hist-modal-report" class="report-box" style="max-height:380px;overflow-y:auto;margin-bottom:16px"></div>
+
+    <div class="form-group">
+      <label style="font-size:12px;color:var(--sub)">메모</label>
+      <textarea id="hist-modal-memo" rows="3" placeholder="메모를 입력하세요..."></textarea>
+    </div>
+    <div id="hist-modal-msg" class="msg"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-danger"    id="btn-hist-delete">삭제</button>
+      <button class="btn btn-secondary" id="btn-hist-memo-save">메모 저장</button>
+      <button class="btn btn-secondary" id="btn-close-history-modal">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 대응방안 모달 -->
+<div id="response-modal" class="modal-overlay">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-title" id="response-modal-title">📋 대응방안 분석</div>
+    <div id="response-modal-steps" class="disc-steps" style="margin-bottom:14px"></div>
+    <div id="response-modal-msg" class="msg"></div>
+    <div id="response-modal-report" class="report-box" style="display:none;margin-top:14px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="btn-close-response-modal">닫기</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
