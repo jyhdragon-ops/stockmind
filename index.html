@@ -482,6 +482,13 @@
       </div>
 
       <div id="discover-result" style="display:none">
+        <div id="disc-success-banner" style="display:none;text-align:center;padding:20px 0 8px">
+          <div style="display:inline-flex;flex-direction:column;align-items:center;gap:6px">
+            <span style="font-size:13px;color:#aaa;letter-spacing:1px;text-transform:uppercase">AI 성공 확률</span>
+            <span id="disc-success-pct" style="font-size:52px;font-weight:800;line-height:1"></span>
+            <span id="disc-recommend-badge" style="font-size:13px;padding:3px 12px;border-radius:20px;font-weight:600"></span>
+          </div>
+        </div>
         <div class="card">
           <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
             <div class="card-title" style="margin-bottom:0">분석 리포트</div>
@@ -853,7 +860,7 @@ const analysisTeam = (() => {
     m4: (style, period) =>
       `당신은 국내 주식 매매 전략가(팀원4)입니다.\n투자 성향: ${style} | 투자 기간: ${period}\n실시간 현재가를 기반으로 구체적인 가격을 계산하세요.\n반드시 아래 형식 그대로 출력하세요 (콤마 없는 정수 + "원"):\n\n- 매수가: {숫자}원\n- 분할매수가 1: {숫자}원\n- 분할매수가 2: {숫자}원\n- 매도가(목표가): {숫자}원\n- 분할매도가 1: {숫자}원\n- 분할매도가 2: {숫자}원\n- 손절가: {숫자}원\n- 예상 수익률: {숫자}%\n- 손익비: 1 : {숫자}\n- 상승 확률: {숫자}%\n- 매매 전략 요약: (2~3줄)`,
     m6: () =>
-      `당신은 투자 리스크 검증 전문가(팀원6, 악마의 변호인)입니다.\n팀원1~4 분석에 반론을 제기하고 치명적 약점을 발굴하세요.\n반드시 아래 형식으로 출력하세요:\n\n**치명적 약점 여부**: 있음 / 없음\n\n**반론 포인트**\n1. ...\n2. ...\n\n**하락 시나리오**\n- 시나리오 A: ...\n- 시나리오 B: ...\n\n**최종 판정**: 통과 / 탈락\n(탈락 시 이유 1~2줄)`,
+      `당신은 투자 리스크 검증 전문가(팀원6, 악마의 변호인)입니다.\n팀원1~4 분석에 반론을 제기하고 치명적 약점을 발굴하세요.\n\n⚠️ 탈락 판정 기준 (아래 중 하나에 해당할 때만 탈락):\n- 상장폐지 임박 또는 매우 높은 상장폐지 위험\n- 분식회계·횡령·사기 등 법적 리스크 확인\n- 심각한 유동성 위기 (부채비율 극단적, 자본잠식)\n- 주가 조작 또는 이상 급등 의혹\n\n단순한 고평가, 하락 가능성, 경쟁 심화, 실적 불확실성은 탈락 사유가 아닙니다. 이런 경우는 반드시 통과로 판정하세요.\n\n반드시 아래 형식으로 출력하세요:\n\n**치명적 약점 여부**: 있음 / 없음\n\n**반론 포인트**\n1. ...\n2. ...\n\n**하락 시나리오**\n- 시나리오 A: ...\n- 시나리오 B: ...\n\n**최종 판정**: 통과 / 탈락\n(탈락 시 이유 1~2줄)`,
     leader: (style) =>
       `당신은 AI 주식 분석팀장입니다. 팀원1~4와 팀원6의 분석을 종합하여 최종 투자 리포트를 작성하세요.\n투자 성향: ${style}\n반드시 아래 형식으로 출력하세요:\n\n## 최종 투자 의견\n\n**추천 여부**: 추천 / 조건부 추천 / 비추천\n\n**핵심 근거**\n1. ...\n2. ...\n3. ...\n\n**주요 리스크**\n1. ...\n2. ...\n\n**종합 의견**: (3~5줄)\n\n**성공 확률**: {숫자}% (팀원1~4 매력도 가중 평균 기반)\n\n※ 뉴스/공시 분석은 AI 학습 데이터 기반이며, 가격/기술적 분석은 실시간 데이터 기반입니다.\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
     m5: (holding) =>
@@ -935,22 +942,17 @@ const analysisTeam = (() => {
     const r6 = await aiService.callAI(P.m6(), `${ctx}팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`, apiKey);
     onProgress(6, '팀원6 완료', 'done');
 
-    if (/최종 판정[^\n]*탈락/.test(r6)) {
-      onProgress(7, '팀장 생략 — 탈락 판정', 'error');
-      return {
-        report: `## 분석 결과: 투자 부적합\n\n팀원6이 치명적 약점을 발견하여 분석을 중단합니다.\n\n${r6}`,
-        member4Output: r4, eliminated: true, priceData, chartData,
-        ticker: selTicker, market: selMarket, stockName: selName,
-      };
-    }
+    const m6Eliminated = /최종 판정[^\n]*탈락/.test(r6);
 
     onProgress(7, '팀장 최종 리포트 작성 중...');
-    const rL = await aiService.callAI(P.leader(riskStyle),
-      `${ctx}${base}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}\n\n팀원6:\n${r6}`,
-      apiKey);
+    const leaderCtx = m6Eliminated
+      ? `${ctx}${base}\n\n[주의: 팀원6이 탈락을 권고했습니다. 이를 충분히 반영하여 신중하게 최종 판단하세요.]\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}\n\n팀원6:\n${r6}`
+      : `${ctx}${base}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}\n\n팀원6:\n${r6}`;
+    const rL = await aiService.callAI(P.leader(riskStyle), leaderCtx, apiKey);
     onProgress(7, '분석 완료', 'done');
 
-    return { report: rL, member4Output: r4, eliminated: false, priceData, chartData,
+    const eliminated = /\*\*추천 여부\*\*[^\n]*비추천/.test(rL);
+    return { report: rL, member4Output: r4, eliminated, priceData, chartData,
              ticker: selTicker, market: selMarket, stockName: selName };
   }
 
@@ -2053,6 +2055,25 @@ ${prevHistory || '없음 (첫 검증)'}`;
       document.getElementById('discover-result').style.display = 'block';
       document.getElementById('btn-disc-verify').style.display = result.eliminated ? 'none' : '';
       document.getElementById('btn-disc-add-portfolio').style.display = (result.ticker && !result.eliminated) ? '' : 'none';
+
+      // 성공 확률 배지
+      const pctMatch = result.report.match(/\*\*성공 확률\*\*[^\d]*(\d+)%/);
+      const recMatch  = result.report.match(/\*\*추천 여부\*\*[^\n]*(추천|조건부 추천|비추천)/);
+      const banner = document.getElementById('disc-success-banner');
+      if (pctMatch) {
+        const pct = parseInt(pctMatch[1], 10);
+        const color = pct >= 70 ? '#2ed573' : pct >= 50 ? '#ffa502' : '#ff4757';
+        document.getElementById('disc-success-pct').textContent = pct + '%';
+        document.getElementById('disc-success-pct').style.color = color;
+        const recEl = document.getElementById('disc-recommend-badge');
+        const recText = recMatch ? recMatch[1] : (result.eliminated ? '비추천' : '추천');
+        recEl.textContent = recText;
+        recEl.style.background = result.eliminated ? 'rgba(255,71,87,0.2)' : pct >= 70 ? 'rgba(46,213,115,0.2)' : 'rgba(255,165,2,0.2)';
+        recEl.style.color = result.eliminated ? '#ff4757' : pct >= 70 ? '#2ed573' : '#ffa502';
+        banner.style.display = '';
+      } else {
+        banner.style.display = 'none';
+      }
     } catch (err) {
       const txt = err.message === 'QUOTA_EXCEEDED'
         ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
