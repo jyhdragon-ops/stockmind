@@ -1669,9 +1669,9 @@ const ui = (() => {
             return `<tr>
               <td><strong>${item.stock_name}</strong><br><span style="font-size:11px;color:var(--sub)">${item.stock_code}</span></td>
               <td>${recDate}</td>
-              <td>${item.rec_price.toLocaleString()}원</td>
-              <td>${item.target_price.toLocaleString()}원</td>
-              <td>${item.stop_loss.toLocaleString()}원</td>
+              <td>${item.rec_price != null ? item.rec_price.toLocaleString() + '원' : '—'}</td>
+              <td>${item.target_price != null ? item.target_price.toLocaleString() + '원' : '—'}</td>
+              <td>${item.stop_loss != null ? item.stop_loss.toLocaleString() + '원' : '—'}</td>
               <td><span class="status-badge status-${item.status}">${item.status}</span></td>
               <td>${checks.length}주차</td>
               <td><button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" data-vd="${item.id}">상세</button></td>
@@ -1709,7 +1709,12 @@ const ui = (() => {
     }).join('');
 
     listEl.querySelectorAll('[data-verify-id]').forEach(btn =>
-      btn.addEventListener('click', () => _runSingleVerify(Number(btn.dataset.verifyId)))
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = '검증 중...';
+        try { await _runSingleVerify(Number(btn.dataset.verifyId)); }
+        finally { btn.disabled = false; btn.textContent = '검증 실행'; }
+      })
     );
   }
 
@@ -1723,12 +1728,12 @@ const ui = (() => {
       dbService.getSetting('proxy_url'),
       dbService.getSetting('gemini_api_key'),
     ]);
-    if (!appkey || !appsecret || !proxyUrl)
-      throw new Error('KIS 설정을 먼저 저장해주세요. (설정 탭)');
 
     _msg('verify-run-msg', `${item.stock_name} 검증 중...`, 'info');
 
     try {
+      if (!appkey || !appsecret || !proxyUrl)
+        throw new Error('KIS 설정을 먼저 저장해주세요. (설정 탭)');
       const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
       const priceData = await stockDataService.getCurrentPrice(
         item.stock_code, item.market || 'J', token, appkey, appsecret, proxyUrl
@@ -2058,18 +2063,21 @@ ${prevHistory || '없음 (첫 검증)'}`;
 
       // 성공 확률 배지
       const pctMatch = result.report.match(/\*\*성공 확률\*\*[^\d]*(\d+)%/);
-      const recMatch  = result.report.match(/\*\*추천 여부\*\*[^\n]*(추천|조건부 추천|비추천)/);
+      const recMatch  = result.report.match(/\*\*추천 여부\*\*[^\n]*(비추천|조건부 추천|추천)/);
       const banner = document.getElementById('disc-success-banner');
       if (pctMatch) {
-        const pct = parseInt(pctMatch[1], 10);
-        const color = pct >= 70 ? '#2ed573' : pct >= 50 ? '#ffa502' : '#ff4757';
+        const pct      = parseInt(pctMatch[1], 10);
+        const recText  = recMatch ? recMatch[1] : (result.eliminated ? '비추천' : '추천');
+        const isNeg    = result.eliminated || recText === '비추천';
+        const isCond   = recText === '조건부 추천';
+        const color    = isNeg ? '#ff4757' : isCond ? '#ffa502' : pct >= 70 ? '#2ed573' : '#ffa502';
+        const bgColor  = isNeg ? 'rgba(255,71,87,0.2)' : isCond ? 'rgba(255,165,2,0.2)' : pct >= 70 ? 'rgba(46,213,115,0.2)' : 'rgba(255,165,2,0.2)';
         document.getElementById('disc-success-pct').textContent = pct + '%';
         document.getElementById('disc-success-pct').style.color = color;
         const recEl = document.getElementById('disc-recommend-badge');
-        const recText = recMatch ? recMatch[1] : (result.eliminated ? '비추천' : '추천');
         recEl.textContent = recText;
-        recEl.style.background = result.eliminated ? 'rgba(255,71,87,0.2)' : pct >= 70 ? 'rgba(46,213,115,0.2)' : 'rgba(255,165,2,0.2)';
-        recEl.style.color = result.eliminated ? '#ff4757' : pct >= 70 ? '#2ed573' : '#ffa502';
+        recEl.style.background = bgColor;
+        recEl.style.color = color;
         banner.style.display = '';
       } else {
         banner.style.display = 'none';
@@ -2083,6 +2091,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     } finally {
       _analyzing = false;
       btn.disabled = false; btn.textContent = '🔍 분석 시작';
+      document.getElementById('discover-progress').style.display = 'none';
     }
   }
 
@@ -2091,7 +2100,8 @@ ${prevHistory || '없음 (첫 검증)'}`;
     switchTab('portfolio');
     document.getElementById('add-stock-form').style.display = 'block';
     document.getElementById('new-code').value   = _discResult.ticker;
-    document.getElementById('new-market').value = _discResult.market;
+    document.getElementById('new-market').value = _discResult.market || 'J';
+    document.getElementById('new-name').value   = _discResult.stockName || '';
     document.getElementById('new-buy-date').valueAsDate = new Date();
   }
 
@@ -2249,6 +2259,8 @@ ${prevHistory || '없음 (첫 검증)'}`;
 
     // 대응방안 모달
     document.getElementById('btn-close-response-modal').addEventListener('click', () => {
+      const inProgress = _respStepState.some(s => s === 'active');
+      if (inProgress && !confirm('분석이 진행 중입니다. 닫으시겠습니까?')) return;
       document.getElementById('response-modal').classList.remove('show');
     });
 
