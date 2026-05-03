@@ -861,8 +861,9 @@ const stockDataService = (() => {
     const data = await res.json();
     const rows = data.output2 || data.output || [];
     if (!rows.length) {
-      const detail = data.msg1 ? `[${data.msg_cd}] ${data.msg1}` : '응답 데이터 없음';
-      throw new Error('차트 데이터 없음: ' + detail);
+      // API 성공(MCA00000)이지만 캔들 없음 — 신규상장/거래정지 등. 빈 차트로 계속 진행
+      console.warn('[getChartData] 캔들 없음:', data.msg_cd, data.msg1);
+      return { candles: [], ma5: null, ma20: null, ma60: null, ma120: null, avgVolume20: null };
     }
 
     const candles = rows.map(r => ({
