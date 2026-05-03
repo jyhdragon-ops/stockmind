@@ -2532,7 +2532,10 @@ ${prevHistory || '없음 (첫 검증)'}`;
         const mktLabel = r.market === 'J' ? '코스피' : '코스닥';
         if (msgEl) { msgEl.textContent = `✓ ${r.code} (${mktLabel}) 자동 입력됨`; msgEl.style.color = 'var(--fall)'; }
       } catch (e) {
-        if (msgEl) { msgEl.textContent = e.message; msgEl.style.color = 'var(--rise)'; }
+        const errMsg = e.message === 'QUOTA_EXCEEDED'
+          ? 'Gemini 한도 초과. 종목코드를 직접 입력해주세요.'
+          : e.message;
+        if (msgEl) { msgEl.textContent = errMsg; msgEl.style.color = 'var(--rise)'; }
       } finally {
         btnEl.disabled = false; btnEl.textContent = '🔍';
       }
