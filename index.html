@@ -389,21 +389,25 @@
       <!-- 종목 추가 폼 -->
       <div id="add-stock-form" class="card" style="display:none">
         <div class="card-title">종목 추가</div>
+        <div class="form-group">
+          <label>종목명 * <span style="font-size:11px;color:var(--sub);font-weight:400">— Enter 또는 🔍으로 코드 자동 조회</span></label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="new-name" placeholder="예: 삼성전자, HPSP, 카카오" style="flex:1" />
+            <button type="button" class="btn btn-secondary" id="btn-lookup-new" style="flex-shrink:0;padding:10px 14px">🔍</button>
+          </div>
+          <div id="new-lookup-msg" style="font-size:12px;margin-top:4px;min-height:16px"></div>
+        </div>
         <div class="form-grid-2">
           <div class="form-group">
-            <label>종목코드 *</label>
-            <input type="text" id="new-code" placeholder="005930" maxlength="6" />
+            <label>종목코드</label>
+            <input type="text" id="new-code" placeholder="자동 입력" maxlength="6" />
           </div>
           <div class="form-group">
-            <label>시장 *</label>
+            <label>시장</label>
             <select id="new-market">
               <option value="J">코스피</option>
               <option value="Q">코스닥</option>
             </select>
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>종목명 *</label>
-            <input type="text" id="new-name" placeholder="삼성전자" />
           </div>
           <div class="form-group">
             <label>매수가 (원) *</label>
@@ -445,10 +449,18 @@
           <label>테마 / 키워드 *</label>
           <textarea id="disc-theme" placeholder="예: AI 반도체, 2차전지, 방산주, 실적 개선 기대 종목..." rows="3"></textarea>
         </div>
+        <div class="form-group">
+          <label>관심 종목명 <span style="font-size:11px;color:var(--sub);font-weight:400">선택 — 비워두면 AI가 테마에서 자동 선정</span></label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="disc-name" placeholder="예: 삼성전자 (비워두면 AI 자동 선정)" style="flex:1" />
+            <button type="button" class="btn btn-secondary" id="btn-lookup-disc" style="flex-shrink:0;padding:10px 14px">🔍</button>
+          </div>
+          <div id="disc-lookup-msg" style="font-size:12px;margin-top:4px;min-height:16px"></div>
+        </div>
         <div class="form-grid-2">
           <div class="form-group">
-            <label>관심 종목코드 (선택)</label>
-            <input type="text" id="disc-ticker" placeholder="005930" maxlength="6" />
+            <label>종목코드 (자동 입력)</label>
+            <input type="text" id="disc-ticker" placeholder="조회 시 자동 입력" maxlength="6" />
           </div>
           <div class="form-group">
             <label>시장 구분</label>
@@ -512,10 +524,18 @@
 
       <div class="card">
         <div class="card-title">분석 종목 입력</div>
+        <div class="form-group">
+          <label>종목명 * <span style="font-size:11px;color:var(--sub);font-weight:400">— Enter 또는 🔍으로 코드 자동 조회</span></label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="analyze-name" placeholder="예: 삼성전자, HPSP, 카카오뱅크" style="flex:1" />
+            <button type="button" class="btn btn-secondary" id="btn-lookup-analyze" style="flex-shrink:0;padding:10px 14px">🔍</button>
+          </div>
+          <div id="analyze-lookup-msg" style="font-size:12px;margin-top:4px;min-height:16px"></div>
+        </div>
         <div class="form-grid-2">
           <div class="form-group">
-            <label>종목코드 *</label>
-            <input type="text" id="analyze-ticker" placeholder="005930" maxlength="6" />
+            <label>종목코드</label>
+            <input type="text" id="analyze-ticker" placeholder="자동 입력" maxlength="6" />
           </div>
           <div class="form-group">
             <label>시장 구분</label>
@@ -523,10 +543,6 @@
               <option value="J">코스피</option>
               <option value="Q">코스닥</option>
             </select>
-          </div>
-          <div class="form-group" style="grid-column:1/-1">
-            <label>종목명 (선택 — 입력 시 리포트에 표시)</label>
-            <input type="text" id="analyze-name" placeholder="삼성전자" />
           </div>
         </div>
         <div class="form-group">
@@ -681,8 +697,12 @@
 
       <div class="card">
         <div class="card-title">📡 KIS 데이터 연결 테스트</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <input type="text" id="test-name" placeholder="종목명 (예: 삼성전자)" style="flex:1;min-width:140px" />
+          <button type="button" class="btn btn-secondary" id="btn-lookup-test" style="flex-shrink:0">🔍 코드 조회</button>
+        </div>
         <div class="row" style="margin-bottom:8px">
-          <input type="text" id="test-ticker" placeholder="종목코드 (예: 005930)" style="max-width:190px" />
+          <input type="text" id="test-ticker" placeholder="자동 입력" style="max-width:190px" />
           <select id="test-market" style="max-width:140px">
             <option value="J">코스피 (J)</option>
             <option value="Q">코스닥 (Q)</option>
@@ -2227,7 +2247,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     const period = document.querySelector('input[name="analyze-period"]:checked')?.value || '단기(1~4주)';
     const risk   = document.querySelector('input[name="analyze-risk"]:checked')?.value  || '중립형';
 
-    if (!ticker) { _msg('analyze-msg', '종목코드를 입력하세요.', 'error'); return; }
+    if (!ticker) { _msg('analyze-msg', '종목명을 입력하고 🔍 버튼으로 코드를 조회하세요.', 'error'); return; }
     if (_analyzing) { _msg('analyze-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
 
     const geminiKey = await dbService.getSetting('gemini_api_key');
@@ -2436,6 +2456,45 @@ ${prevHistory || '없음 (첫 검증)'}`;
     }
   }
 
+  async function _lookupStockCode(name) {
+    const geminiKey = await dbService.getSetting('gemini_api_key');
+    if (!geminiKey) throw new Error('Gemini API 키를 먼저 설정해주세요. (설정 탭)');
+    const sysPrompt = `당신은 한국 주식 데이터베이스입니다. 종목명을 받으면 KRX 상장 6자리 종목코드와 시장을 반환합니다.\n반드시 아래 형식으로만 출력하세요 (설명, 이유 없이):\n종목코드: XXXXXX\n시장: J\n(시장은 코스피면 J, 코스닥이면 Q)`;
+    const resp  = await aiService.callAI(sysPrompt, name.trim(), geminiKey);
+    const codeM = resp.match(/종목코드:\s*(\d{6})/);
+    const mktM  = resp.match(/시장:\s*([JQ])/i);
+    if (!codeM) throw new Error('종목을 찾지 못했습니다. 코드를 직접 입력하세요.');
+    return { code: codeM[1], market: mktM ? mktM[1].toUpperCase() : 'J' };
+  }
+
+  function _bindLookup({ nameId, codeId, marketId, btnId, msgId }) {
+    const nameEl = document.getElementById(nameId);
+    const btnEl  = document.getElementById(btnId);
+    if (!nameEl || !btnEl) return;
+
+    const doLookup = async () => {
+      const name = nameEl.value.trim();
+      if (!name) return;
+      const msgEl = msgId ? document.getElementById(msgId) : null;
+      btnEl.disabled = true; btnEl.textContent = '...';
+      if (msgEl) { msgEl.textContent = '조회 중...'; msgEl.style.color = 'var(--accent)'; }
+      try {
+        const r = await _lookupStockCode(name);
+        document.getElementById(codeId).value   = r.code;
+        document.getElementById(marketId).value = r.market;
+        const mktLabel = r.market === 'J' ? '코스피' : '코스닥';
+        if (msgEl) { msgEl.textContent = `✓ ${r.code} (${mktLabel}) 자동 입력됨`; msgEl.style.color = 'var(--fall)'; }
+      } catch (e) {
+        if (msgEl) { msgEl.textContent = e.message; msgEl.style.color = 'var(--rise)'; }
+      } finally {
+        btnEl.disabled = false; btnEl.textContent = '🔍';
+      }
+    };
+
+    btnEl.addEventListener('click', doLookup);
+    nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
+  }
+
   function _bindEvents() {
     document.querySelectorAll('[data-tab]').forEach(el =>
       el.addEventListener('click', () => switchTab(el.dataset.tab))
@@ -2476,6 +2535,12 @@ ${prevHistory || '없음 (첫 검증)'}`;
     document.getElementById('btn-close-history-modal').addEventListener('click', () => {
       document.getElementById('history-modal').classList.remove('show');
     });
+
+    // 종목명 → 코드 자동 조회 (4곳 공통)
+    _bindLookup({ nameId: 'new-name',      codeId: 'new-code',      marketId: 'new-market',      btnId: 'btn-lookup-new',     msgId: 'new-lookup-msg' });
+    _bindLookup({ nameId: 'analyze-name',  codeId: 'analyze-ticker', marketId: 'analyze-market', btnId: 'btn-lookup-analyze', msgId: 'analyze-lookup-msg' });
+    _bindLookup({ nameId: 'disc-name',     codeId: 'disc-ticker',   marketId: 'disc-market',     btnId: 'btn-lookup-disc',    msgId: 'disc-lookup-msg' });
+    _bindLookup({ nameId: 'test-name',     codeId: 'test-ticker',   marketId: 'test-market',     btnId: 'btn-lookup-test',    msgId: null });
 
     // 종목 발굴
     document.getElementById('btn-start-discover').addEventListener('click', _startDiscover);
