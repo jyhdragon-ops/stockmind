@@ -267,6 +267,7 @@
     .hist-type-발굴   { background: rgba(74,158,255,.15);  color: var(--accent); }
     .hist-type-대응   { background: rgba(255,71,87,.12);   color: var(--rise); }
     .hist-type-브리핑 { background: rgba(46,213,115,.12);  color: var(--fall); }
+    .hist-type-분석   { background: rgba(155,89,182,.15);  color: #c39bd3; }
     .hist-target { font-size: 14px; font-weight: 600; }
     .hist-date   { font-size: 12px; color: var(--sub); flex-shrink: 0; }
     .hist-summary { font-size: 13px; color: var(--sub); line-height: 1.5; }
@@ -319,6 +320,7 @@
       <div class="nav-item" data-tab="dashboard"> <span class="nav-icon">🏠</span>대시보드</div>
       <div class="nav-item" data-tab="portfolio"> <span class="nav-icon">📊</span>내 종목</div>
       <div class="nav-item" data-tab="discover">  <span class="nav-icon">🔍</span>종목 발굴</div>
+      <div class="nav-item" data-tab="analyze">   <span class="nav-icon">🔎</span>종목 분석</div>
       <div class="nav-item" data-tab="history">   <span class="nav-icon">🕐</span>분석 이력</div>
       <div class="nav-item" data-tab="verify">    <span class="nav-icon">📈</span>검증</div>
       <div class="nav-item" data-tab="settings">  <span class="nav-icon">⚙️</span>설정</div>
@@ -504,6 +506,83 @@
       <div id="disc-msg" class="msg" style="margin-top:12px"></div>
     </div>
 
+    <!-- 종목 분석 -->
+    <div id="tab-analyze" class="tab-content">
+      <div class="page-header"><h2>🔎 종목 분석</h2></div>
+
+      <div class="card">
+        <div class="card-title">분석 종목 입력</div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label>종목코드 *</label>
+            <input type="text" id="analyze-ticker" placeholder="005930" maxlength="6" />
+          </div>
+          <div class="form-group">
+            <label>시장 구분</label>
+            <select id="analyze-market">
+              <option value="J">코스피</option>
+              <option value="Q">코스닥</option>
+            </select>
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>종목명 (선택 — 입력 시 리포트에 표시)</label>
+            <input type="text" id="analyze-name" placeholder="삼성전자" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>투자 기간</label>
+          <div class="radio-group">
+            <label class="radio-item"><input type="radio" name="analyze-period" value="단기(1~4주)" checked />단기 (1~4주)</label>
+            <label class="radio-item"><input type="radio" name="analyze-period" value="스윙(1~3개월)" />스윙 (1~3개월)</label>
+            <label class="radio-item"><input type="radio" name="analyze-period" value="중기(3개월+)" />중기 (3개월+)</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>리스크 성향</label>
+          <div class="radio-group">
+            <label class="radio-item"><input type="radio" name="analyze-risk" value="공격형" />공격형</label>
+            <label class="radio-item"><input type="radio" name="analyze-risk" value="중립형" checked />중립형</label>
+            <label class="radio-item"><input type="radio" name="analyze-risk" value="안정형" />안정형</label>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-start-analyze">🔎 분석 시작</button>
+      </div>
+
+      <div id="analyze-progress" class="card" style="display:none">
+        <div class="card-title">분석 진행 중</div>
+        <div id="analyze-steps" class="disc-steps"></div>
+      </div>
+
+      <div id="analyze-result" style="display:none">
+        <div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;align-items:flex-end;padding:20px 0 12px">
+          <div style="text-align:center">
+            <div style="font-size:11px;color:#aaa;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">매매 판단</div>
+            <span id="analyze-trade-badge" style="font-size:20px;font-weight:700;padding:7px 20px;border-radius:20px;display:inline-block"></span>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:11px;color:#aaa;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">전략</div>
+            <span id="analyze-strategy-badge" style="font-size:20px;font-weight:700;padding:7px 20px;border-radius:20px;display:inline-block"></span>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:11px;color:#aaa;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">수익 확률</div>
+            <span id="analyze-prob-badge" style="font-size:48px;font-weight:800;line-height:1;display:inline-block"></span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="card-title" style="margin-bottom:0">분석 리포트</div>
+            <div class="row" style="gap:8px">
+              <button class="btn btn-secondary" id="btn-analyze-add-portfolio">📊 내 종목에 추가</button>
+              <button class="btn btn-primary"   id="btn-analyze-verify">✅ 검증 등록</button>
+            </div>
+          </div>
+          <div id="analyze-report-content" class="report-box"></div>
+        </div>
+      </div>
+
+      <div id="analyze-msg" class="msg" style="margin-top:12px"></div>
+    </div>
+
     <!-- 분석 이력 -->
     <div id="tab-history" class="tab-content">
       <div class="page-header">
@@ -512,6 +591,7 @@
           <select id="hist-filter" style="max-width:160px">
             <option value="">전체</option>
             <option value="종목발굴">종목 발굴</option>
+            <option value="종목분석">종목 분석</option>
             <option value="대응방안">대응방안</option>
             <option value="시황브리핑">시황 브리핑</option>
           </select>
@@ -630,6 +710,7 @@
     <div class="tab-btn" data-tab="dashboard"><span class="ti">🏠</span>대시보드</div>
     <div class="tab-btn" data-tab="portfolio"><span class="ti">📊</span>내 종목</div>
     <div class="tab-btn" data-tab="discover"> <span class="ti">🔍</span>종목발굴</div>
+    <div class="tab-btn" data-tab="analyze">  <span class="ti">🔎</span>종목분석</div>
     <div class="tab-btn" data-tab="history">  <span class="ti">🕐</span>분석이력</div>
     <div class="tab-btn" data-tab="verify">   <span class="ti">📈</span>검증</div>
     <div class="tab-btn" data-tab="settings"> <span class="ti">⚙️</span>설정</div>
@@ -865,6 +946,8 @@ const analysisTeam = (() => {
       `당신은 AI 주식 분석팀장입니다. 팀원1~4와 팀원6의 분석을 종합하여 최종 투자 리포트를 작성하세요.\n투자 성향: ${style}\n반드시 아래 형식으로 출력하세요:\n\n## 최종 투자 의견\n\n**추천 여부**: 추천 / 조건부 추천 / 비추천\n\n**핵심 근거**\n1. ...\n2. ...\n3. ...\n\n**주요 리스크**\n1. ...\n2. ...\n\n**종합 의견**: (3~5줄)\n\n**성공 확률**: {숫자}% (팀원1~4 매력도 가중 평균 기반)\n\n※ 뉴스/공시 분석은 AI 학습 데이터 기반이며, 가격/기술적 분석은 실시간 데이터 기반입니다.\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
     m5: (holding) =>
       `당신은 보유종목 대응방안 전문가(팀원5)입니다.\n보유현황: ${holding}\n팀원1~4 분석과 보유현황을 종합하여 대응방안을 작성하세요.\n반드시 아래 형식으로 출력하세요:\n\n## 보유종목 대응방안\n\n**현재 상황 요약** (현재가, 손익률 수치 포함 2~3줄)\n\n**AI 판단**: 홀드 / 추가매수 / 분할매도 / 손절\n\n**판단 근거**\n1. ...\n2. ...\n3. ...\n\n**구체적 행동 계획**\n- 시나리오 A (상승 시): ...\n- 시나리오 B (하락 시): ...\n\n**주의 리스크**\n1. ...\n2. ...\n\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
+    leaderAnalyze: (style, period) =>
+      `당신은 AI 주식 분석팀장입니다. 팀원1~4의 분석을 종합하여 이 종목의 매매 판단 리포트를 작성하세요.\n투자 성향: ${style} | 투자 기간: ${period}\n\n반드시 아래 형식 그대로 출력하세요 (항목 순서 변경 금지):\n\n## 종목 분석 리포트\n\n**매매 판단**: 매수 / 관망 / 매도 (셋 중 하나만)\n\n**전략**: 단기 / 스윙 / 장기 (셋 중 하나만)\n\n**수익 확률**: {숫자}% (팀원1~4 매력도 가중 평균 기반)\n\n**핵심 근거**\n1. ...\n2. ...\n3. ...\n\n**주요 리스크**\n1. ...\n2. ...\n\n**매매 전략**\n- 진입 시점: ...\n- 매수가: {숫자}원\n- 목표가: {숫자}원\n- 손절가: {숫자}원\n\n**종합 의견**: (3~5줄)\n\n※ 최종 투자 판단은 사용자 본인에게 있습니다.`,
   };
 
   function parseRecData(m4Out, ticker, name) {
@@ -990,7 +1073,45 @@ const analysisTeam = (() => {
     return { report: r5, priceData, chartData };
   }
 
-  return { runDiscovery, runResponse, parseRecData };
+  async function runAnalysis({ ticker, market, stockName, period, riskStyle, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    onProgress(0, '실시간 데이터 수집 중...');
+    const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
+    const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
+    await new Promise(r => setTimeout(r, 700));
+    const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
+    const ctx       = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
+    onProgress(0, '데이터 수집 완료', 'done');
+
+    const base = `종목: ${stockName || ticker} | 투자기간: ${period} | 성향: ${riskStyle}`;
+
+    onProgress(1, '팀원1 시장/뉴스 분석 중...');
+    const r1 = await aiService.callAI(P.m1(riskStyle, period), ctx + base, apiKey);
+    onProgress(1, '팀원1 완료', 'done');
+
+    onProgress(2, '팀원2 기술적 분석 중...');
+    const r2 = await aiService.callAI(P.m2(riskStyle, period), ctx + `팀원1:\n${r1}`, apiKey);
+    onProgress(2, '팀원2 완료', 'done');
+
+    onProgress(3, '팀원3 재무 분석 중...');
+    const r3 = await aiService.callAI(P.m3(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    onProgress(3, '팀원3 완료', 'done');
+
+    onProgress(4, '팀원4 매매전략 수립 중...');
+    const r4 = await aiService.callAI(P.m4(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    onProgress(4, '팀원4 완료', 'done');
+
+    onProgress(5, '팀장 최종 분석 중...');
+    const rL = await aiService.callAI(
+      P.leaderAnalyze(riskStyle, period),
+      `${ctx}${base}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`,
+      apiKey
+    );
+    onProgress(5, '분석 완료', 'done');
+
+    return { report: rL, member4Output: r4, priceData, chartData, ticker, market, stockName };
+  }
+
+  return { runDiscovery, runResponse, runAnalysis, parseRecData };
 })();
 
 // ============================================================
@@ -1004,10 +1125,13 @@ const ui = (() => {
   let _discResult      = null;
   let _discStepState   = Array(8).fill('pending');
   let _respStepState   = Array(6).fill('pending');
+  let _analyzeResult   = null;
+  let _analyzeStepState = Array(6).fill('pending');
   let _analyzing       = false;
 
-  const DISC_LABELS = ['종목 선정','데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
-  const RESP_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원5 대응방안'];
+  const DISC_LABELS    = ['종목 선정','데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
+  const RESP_LABELS    = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원5 대응방안'];
+  const ANALYZE_LABELS = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀장 최종분석'];
 
   function _msg(id, text, type) {
     const el = document.getElementById(id);
@@ -1066,6 +1190,7 @@ const ui = (() => {
     if (tabId === 'portfolio') _loadPortfolio();
     if (tabId === 'history')   _loadHistory();
     if (tabId === 'verify')    _loadVerify();
+    if (tabId === 'analyze')   {} // 분석 탭은 별도 로드 없음
   }
 
   async function _loadSettings() {
@@ -1914,7 +2039,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
 
     listEl.innerHTML = `<div class="card" style="padding:0;overflow:hidden">` +
       items.map(item => {
-        const typeClass = item.type === '종목발굴' ? '발굴' : item.type === '대응방안' ? '대응' : '브리핑';
+        const typeClass = item.type === '종목발굴' ? '발굴' : item.type === '대응방안' ? '대응' : item.type === '종목분석' ? '분석' : '브리핑';
         const date = new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         return `
           <div class="hist-item" data-hist-id="${item.id}">
@@ -2095,6 +2220,114 @@ ${prevHistory || '없음 (첫 검증)'}`;
     }
   }
 
+  async function _startAnalyze() {
+    const ticker = document.getElementById('analyze-ticker').value.trim().toUpperCase();
+    const market = document.getElementById('analyze-market').value;
+    const name   = document.getElementById('analyze-name').value.trim();
+    const period = document.querySelector('input[name="analyze-period"]:checked')?.value || '단기(1~4주)';
+    const risk   = document.querySelector('input[name="analyze-risk"]:checked')?.value  || '중립형';
+
+    if (!ticker) { _msg('analyze-msg', '종목코드를 입력하세요.', 'error'); return; }
+    if (_analyzing) { _msg('analyze-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
+
+    const geminiKey = await dbService.getSetting('gemini_api_key');
+    if (!geminiKey) { _msg('analyze-msg', 'Gemini API 키를 설정해주세요. (설정 탭)', 'error'); return; }
+
+    const [appkey, appsecret, proxyUrl] = await Promise.all([
+      dbService.getSetting('kis_app_key'),
+      dbService.getSetting('kis_app_secret'),
+      dbService.getSetting('proxy_url'),
+    ]);
+    if (!appkey || !appsecret || !proxyUrl) {
+      _msg('analyze-msg', 'KIS API 설정이 필요합니다. (설정 탭)', 'error'); return;
+    }
+
+    const btn = document.getElementById('btn-start-analyze');
+    _analyzing = true;
+    btn.disabled = true; btn.textContent = '분석 중...';
+    document.getElementById('analyze-msg').classList.remove('show');
+    document.getElementById('analyze-result').style.display = 'none';
+    document.getElementById('analyze-progress').style.display = 'block';
+    _analyzeStepState = Array(6).fill('pending');
+    _renderSteps('analyze-steps', ANALYZE_LABELS, _analyzeStepState);
+
+    try {
+      const result = await analysisTeam.runAnalysis({
+        ticker, market, stockName: name, period, riskStyle: risk,
+        apiKey: geminiKey, appkey, appsecret, proxyUrl,
+        onProgress: (idx, _label, state = 'active') => {
+          _analyzeStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
+          _renderSteps('analyze-steps', ANALYZE_LABELS, _analyzeStepState);
+        },
+      });
+
+      const recData = analysisTeam.parseRecData(result.member4Output, ticker, name || ticker);
+      recData.market = market;
+      _analyzeResult = { ...result, recData };
+
+      await dbService.put('analysis_history', {
+        type: '종목분석', target: name || ticker,
+        summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
+        full_report: result.report,
+        stock_data: JSON.stringify({ priceData: result.priceData, chartData: result.chartData }),
+        rec_data: JSON.stringify(recData),
+        memo: '', created_at: new Date().toISOString(),
+      });
+
+      document.getElementById('analyze-report-content').innerHTML =
+        DOMPurify.sanitize(marked.parse(result.report));
+      document.getElementById('analyze-result').style.display = 'block';
+
+      // 배지 파싱 및 렌더링
+      const tradeMatch = result.report.match(/\*\*매매 판단\*\*[^\n]*(매수|관망|매도)/);
+      const stratMatch = result.report.match(/\*\*전략\*\*[^\n]*(단기|스윙|장기)/);
+      const probMatch  = result.report.match(/\*\*수익 확률\*\*[^\d]*(\d+)%/);
+
+      const tradeText = tradeMatch ? tradeMatch[1] : '관망';
+      const stratText = stratMatch ? stratMatch[1] : '';
+      const prob      = probMatch  ? parseInt(probMatch[1], 10) : null;
+
+      const tradeColor = tradeText === '매수' ? '#ff4757' : tradeText === '매도' ? '#2ed573' : '#ffa502';
+      const tradeBg    = tradeText === '매수' ? 'rgba(255,71,87,0.2)' : tradeText === '매도' ? 'rgba(46,213,115,0.2)' : 'rgba(255,165,2,0.2)';
+      const probColor  = prob === null ? '#888' : prob >= 65 ? '#2ed573' : prob >= 50 ? '#ffa502' : '#ff4757';
+
+      const tradeBadge = document.getElementById('analyze-trade-badge');
+      tradeBadge.textContent = tradeText;
+      tradeBadge.style.background = tradeBg;
+      tradeBadge.style.color = tradeColor;
+
+      const stratBadge = document.getElementById('analyze-strategy-badge');
+      stratBadge.textContent = stratText || '—';
+      stratBadge.style.background = 'rgba(74,158,255,0.2)';
+      stratBadge.style.color = '#4a9eff';
+
+      const probBadge = document.getElementById('analyze-prob-badge');
+      probBadge.textContent = prob !== null ? prob + '%' : '—';
+      probBadge.style.color = probColor;
+
+    } catch (err) {
+      const txt = err.message === 'QUOTA_EXCEEDED'
+        ? 'Gemini 무료 한도 초과. 내일 다시 시도해주세요.'
+        : '분석 실패: ' + err.message;
+      _msg('analyze-msg', txt, 'error');
+      console.error('[analyze]', err);
+    } finally {
+      _analyzing = false;
+      btn.disabled = false; btn.textContent = '🔎 분석 시작';
+      document.getElementById('analyze-progress').style.display = 'none';
+    }
+  }
+
+  function _analyzeAddToPortfolio() {
+    if (!_analyzeResult?.ticker) return;
+    switchTab('portfolio');
+    document.getElementById('add-stock-form').style.display = 'block';
+    document.getElementById('new-code').value   = _analyzeResult.ticker;
+    document.getElementById('new-market').value = _analyzeResult.market || 'J';
+    document.getElementById('new-name').value   = _analyzeResult.stockName || '';
+    document.getElementById('new-buy-date').valueAsDate = new Date();
+  }
+
   function _discAddToPortfolio() {
     if (!_discResult?.ticker) return;
     switchTab('portfolio');
@@ -2249,6 +2482,13 @@ ${prevHistory || '없음 (첫 검증)'}`;
     document.getElementById('btn-disc-add-portfolio').addEventListener('click', _discAddToPortfolio);
     document.getElementById('btn-disc-verify').addEventListener('click', () => {
       if (_discResult) _showVerifyModal(_discResult.recData);
+    });
+
+    // 종목 분석
+    document.getElementById('btn-start-analyze').addEventListener('click', _startAnalyze);
+    document.getElementById('btn-analyze-add-portfolio').addEventListener('click', _analyzeAddToPortfolio);
+    document.getElementById('btn-analyze-verify').addEventListener('click', () => {
+      if (_analyzeResult) _showVerifyModal(_analyzeResult.recData);
     });
 
     // 검증 모달
