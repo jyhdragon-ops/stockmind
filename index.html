@@ -524,6 +524,7 @@
 
       <div class="card">
         <div class="card-title">분석 종목 입력</div>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:14px">※ 종목 분석은 실시간 시세 조회가 필요하므로 <strong style="color:var(--text)">KIS API 설정이 필수</strong>입니다.</p>
         <div class="form-group">
           <label>종목명 * <span style="font-size:11px;color:var(--sub);font-weight:400">— Enter 또는 🔍으로 코드 자동 조회</span></label>
           <div style="display:flex;gap:8px">
@@ -748,6 +749,8 @@
 <script>
 'use strict';
 
+const KIS_RATE_LIMIT_MS = 700; // KIS API 초당 호출 한도 방지
+
 // ============================================================
 // dbService — IndexedDB CRUD
 // ============================================================
@@ -924,7 +927,14 @@ const stockDataService = (() => {
     return lines.join('\n');
   }
 
-  return { getToken, getCurrentPrice, getChartData, buildStockContext, isMarketOpen: _isMarketOpen };
+  async function refreshToken(appkey, appsecret, proxyUrl) {
+    await dbService.putSetting('kis_access_token', null);
+    await dbService.putSetting('kis_token_expires', null);
+    await getToken(appkey, appsecret, proxyUrl);
+    return dbService.getSetting('kis_token_expires');
+  }
+
+  return { getToken, refreshToken, getCurrentPrice, getChartData, buildStockContext, isMarketOpen: _isMarketOpen };
 })();
 
 // ============================================================
@@ -1036,7 +1046,7 @@ const analysisTeam = (() => {
       onProgress(1, '실시간 데이터 수집 중...');
       const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
       priceData = await stockDataService.getCurrentPrice(selTicker, selMarket, token, appkey, appsecret, proxyUrl);
-      await new Promise(r => setTimeout(r, 700));
+      await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
       chartData  = await stockDataService.getChartData(selTicker, selMarket, token, appkey, appsecret, proxyUrl);
       ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
       onProgress(1, '데이터 수집 완료', 'done');
@@ -1084,7 +1094,7 @@ const analysisTeam = (() => {
     onProgress(0, '실시간 데이터 수집 중...');
     const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
     const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
     const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
     const ctx = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
     onProgress(0, '데이터 수집 완료', 'done');
@@ -1118,7 +1128,7 @@ const analysisTeam = (() => {
     onProgress(0, '실시간 데이터 수집 중...');
     const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
     const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
     const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
     const ctx       = stockDataService.buildStockContext(priceData, chartData) + '\n\n';
     onProgress(0, '데이터 수집 완료', 'done');
@@ -1168,7 +1178,8 @@ const ui = (() => {
   let _respStepState   = Array(6).fill('pending');
   let _analyzeResult   = null;
   let _analyzeStepState = Array(6).fill('pending');
-  let _analyzing       = false;
+  let _discAnalyzing   = false;
+  let _runAnalyzing    = false;
 
   const DISC_LABELS    = ['종목 선정','데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원6 리스크','팀장 최종리포트'];
   const RESP_LABELS    = ['데이터 수집','팀원1 시장/뉴스','팀원2 기술적','팀원3 재무','팀원4 매매전략','팀원5 대응방안'];
@@ -1292,22 +1303,9 @@ const ui = (() => {
     _msg('token-msg', '토큰 발급 중...', 'info');
 
     try {
-      const res = await fetch(`${proxyUrl}/token`, {
-        method: 'POST',
-        headers: { 'x-appkey': appkey, 'x-appsecret': appsecret },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      const data = await res.json();
-
-      if (data.access_token) {
-        const expires = new Date(Date.now() + Number(data.expires_in) * 1000).toISOString();
-        await dbService.putSetting('kis_access_token', data.access_token);
-        await dbService.putSetting('kis_token_expires', expires);
-        _msg('token-msg', `✓ 발급 성공! 만료: ${new Date(expires).toLocaleString('ko-KR')}`, 'success');
-        await _refreshTokenBadge();
-      } else {
-        _msg('token-msg', '발급 실패: ' + (data.msg1 || data.message || JSON.stringify(data)), 'error');
-      }
+      const expires = await stockDataService.refreshToken(appkey, appsecret, proxyUrl);
+      _msg('token-msg', `✓ 발급 성공! 만료: ${new Date(expires).toLocaleString('ko-KR')}`, 'success');
+      await _refreshTokenBadge();
     } catch (err) {
       _msg('token-msg', '발급 실패: ' + err.message, 'error');
       console.error('[token]', err);
@@ -1352,7 +1350,7 @@ const ui = (() => {
 
       const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
       const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
-      await new Promise(r => setTimeout(r, 700)); // KIS API 초당 호출 한도 방지
+      await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS)); // KIS API 초당 호출 한도 방지
       const chartData = await stockDataService.getChartData(ticker, market, token, appkey, appsecret, proxyUrl);
 
       const sign = priceData.change >= 0 ? '+' : '';
@@ -1364,7 +1362,6 @@ const ui = (() => {
         `20일 평균거래량: ${chartData.avgVolume20 ? chartData.avgVolume20.toLocaleString() : 'N/A'}`,
         'success'
       );
-      console.log('[test-kis] buildStockContext:\n', stockDataService.buildStockContext(priceData, chartData));
     } catch (err) {
       _msg('test-result', '오류: ' + err.message, 'error');
       console.error('[test-kis]', err);
@@ -1551,7 +1548,7 @@ const ui = (() => {
       const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
 
       for (let i = 0; i < groups.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, 700));
+        if (i > 0) await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
         const g = groups[i];
         _pfPrices[g.key] = await stockDataService.getCurrentPrice(
           g.code, g.market, token, appkey, appsecret, proxyUrl
@@ -1601,9 +1598,19 @@ const ui = (() => {
 
   // ── Dashboard ──
 
+  let _dashAutoLoaded = false;
+
   async function _loadDashboard() {
     _pfItems = await dbService.getAll('portfolio');
     _renderDashboard();
+    if (!_dashAutoLoaded && _pfItems.length && Object.keys(_pfPrices).length === 0) {
+      const [k, s, p] = await Promise.all([
+        dbService.getSetting('kis_app_key'),
+        dbService.getSetting('kis_app_secret'),
+        dbService.getSetting('proxy_url'),
+      ]);
+      if (k && s && p) { _dashAutoLoaded = true; _refreshDashboard(); }
+    }
   }
 
   function _renderDashboard() {
@@ -1712,7 +1719,7 @@ const ui = (() => {
 
       const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
       for (let i = 0; i < groups.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, 700));
+        if (i > 0) await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
         const g = groups[i];
         _pfPrices[g.key] = await stockDataService.getCurrentPrice(
           g.code, g.market, token, appkey, appsecret, proxyUrl
@@ -1935,7 +1942,7 @@ const ui = (() => {
       let newStatus = (item.status === '대기') ? '진행중' : item.status;
       if      (currentPrice >= item.target_price)           newStatus = '성공';
       else if (currentPrice <= item.stop_loss)              newStatus = '손절';
-      else if (checks.length >= 4 && changeRate < 0)       newStatus = '실패';
+      else if (checks.length >= 4 && changeRate < -5)       newStatus = '실패';
       else if (checks.length >= 8)                          newStatus = '실패';
       else                                                  newStatus = '진행중';
 
@@ -2011,9 +2018,23 @@ ${prevHistory || '없음 (첫 검증)'}`;
     btn.disabled = true; btn.textContent = '검증 중...';
     document.getElementById('verify-run-msg').classList.remove('show');
 
+    let successCount = 0, failCount = 0;
     for (let i = 0; i < pending.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 700));
-      try { await _runSingleVerify(pending[i].id); } catch {}
+      if (i > 0) await new Promise(r => setTimeout(r, KIS_RATE_LIMIT_MS));
+      try {
+        await _runSingleVerify(pending[i].id);
+        successCount++;
+      } catch (e) {
+        failCount++;
+        console.error('[verify-all]', pending[i].stock_name, e);
+      }
+    }
+
+    if (pending.length > 0) {
+      const msg = failCount > 0
+        ? `완료: ${successCount}건 성공, ${failCount}건 실패 (콘솔 확인)`
+        : `✓ 전체 ${successCount}건 검증 완료`;
+      _msg('verify-run-msg', msg, failCount > 0 ? 'error' : 'success');
     }
     btn.disabled = false; btn.textContent = '▶ 전체 검증 실행';
   }
@@ -2073,22 +2094,30 @@ ${prevHistory || '없음 (첫 검증)'}`;
 
   let _histItems    = [];
   let _histSelected = null;
+  let _histPage     = 1;
+  const HIST_PAGE_SIZE = 20;
 
   async function _loadHistory() {
     _histItems = await dbService.getAll('analysis_history');
     _histItems.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    _histPage = 1;
     _renderHistory();
   }
 
   function _renderHistory() {
     const filter = document.getElementById('hist-filter').value;
     const listEl = document.getElementById('hist-list');
-    const items  = filter ? _histItems.filter(i => i.type === filter) : _histItems;
+    const all    = filter ? _histItems.filter(i => i.type === filter) : _histItems;
+    const items  = all.slice(0, _histPage * HIST_PAGE_SIZE);
 
-    if (!items.length) {
+    if (!all.length) {
       listEl.innerHTML = `<div class="card"><div class="hist-empty">분석 이력이 없습니다.<br><span style="font-size:12px">종목 발굴·대응방안·시황 브리핑 실행 후 자동으로 저장됩니다.</span></div></div>`;
       return;
     }
+
+    const moreBtn = items.length < all.length
+      ? `<div style="text-align:center;padding:14px"><button class="btn btn-secondary" id="btn-hist-more">더 보기 (${all.length - items.length}건 남음)</button></div>`
+      : '';
 
     listEl.innerHTML = `<div class="card" style="padding:0;overflow:hidden">` +
       items.map(item => {
@@ -2105,11 +2134,15 @@ ${prevHistory || '없음 (첫 검증)'}`;
             </div>
             <div class="hist-summary">${item.summary || ''}</div>
           </div>`;
-      }).join('') + `</div>`;
+      }).join('') + `</div>` + moreBtn;
 
     listEl.querySelectorAll('[data-hist-id]').forEach(el =>
       el.addEventListener('click', () => _openHistoryModal(Number(el.dataset.histId)))
     );
+    document.getElementById('btn-hist-more')?.addEventListener('click', () => {
+      _histPage++;
+      _renderHistory();
+    });
   }
 
   function _openHistoryModal(id) {
@@ -2183,14 +2216,15 @@ ${prevHistory || '없음 (첫 검증)'}`;
   }
 
   async function _startDiscover() {
-    const theme  = document.getElementById('disc-theme').value.trim();
-    const ticker = document.getElementById('disc-ticker').value.trim().toUpperCase();
-    const market = document.getElementById('disc-market').value;
-    const period = document.querySelector('input[name="disc-period"]:checked')?.value || '스윙';
-    const risk   = document.querySelector('input[name="disc-risk"]:checked')?.value  || '중립형';
+    const theme      = document.getElementById('disc-theme').value.trim();
+    const ticker     = document.getElementById('disc-ticker').value.trim().toUpperCase();
+    const stockName  = document.getElementById('disc-name').value.trim();
+    const market     = document.getElementById('disc-market').value;
+    const period     = document.querySelector('input[name="disc-period"]:checked')?.value || '스윙';
+    const risk       = document.querySelector('input[name="disc-risk"]:checked')?.value  || '중립형';
 
     if (!theme) { _msg('disc-msg', '테마/키워드를 입력하세요.', 'error'); return; }
-    if (_analyzing) { _msg('disc-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
+    if (_discAnalyzing) { _msg('disc-msg', '현재 종목 발굴이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
 
     const [geminiKey, geminiKey2, geminiKey3] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
@@ -2206,7 +2240,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     ]);
 
     const btn = document.getElementById('btn-start-discover');
-    _analyzing = true;
+    _discAnalyzing = true;
     btn.disabled = true; btn.textContent = '분석 중...';
     document.getElementById('disc-msg').classList.remove('show');
     document.getElementById('discover-result').style.display = 'none';
@@ -2216,7 +2250,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
 
     try {
       const result = await analysisTeam.runDiscovery({
-        ticker, market, stockName: '', theme, period, riskStyle: risk,
+        ticker, market, stockName, theme, period, riskStyle: risk,
         apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
         onProgress: (idx, _label, state = 'active') => {
           _discStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
@@ -2271,7 +2305,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
       _msg('disc-msg', txt, 'error');
       console.error('[discover]', err);
     } finally {
-      _analyzing = false;
+      _discAnalyzing = false;
       btn.disabled = false; btn.textContent = '🔍 분석 시작';
       document.getElementById('discover-progress').style.display = 'none';
     }
@@ -2285,7 +2319,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     const risk   = document.querySelector('input[name="analyze-risk"]:checked')?.value  || '중립형';
 
     if (!ticker) { _msg('analyze-msg', '종목명을 입력하고 🔍 버튼으로 코드를 조회하세요.', 'error'); return; }
-    if (_analyzing) { _msg('analyze-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
+    if (_runAnalyzing) { _msg('analyze-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
 
     const [geminiKey, geminiKey2, geminiKey3] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
@@ -2304,7 +2338,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     }
 
     const btn = document.getElementById('btn-start-analyze');
-    _analyzing = true;
+    _runAnalyzing = true;
     btn.disabled = true; btn.textContent = '분석 중...';
     document.getElementById('analyze-msg').classList.remove('show');
     document.getElementById('analyze-result').style.display = 'none';
@@ -2373,7 +2407,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
       _msg('analyze-msg', txt, 'error');
       console.error('[analyze]', err);
     } finally {
-      _analyzing = false;
+      _runAnalyzing = false;
       btn.disabled = false; btn.textContent = '🔎 분석 시작';
       document.getElementById('analyze-progress').style.display = 'none';
     }
@@ -2579,7 +2613,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     });
 
     // 분석 이력
-    document.getElementById('hist-filter').addEventListener('change', _renderHistory);
+    document.getElementById('hist-filter').addEventListener('change', () => { _histPage = 1; _renderHistory(); });
     document.getElementById('btn-hist-memo-save').addEventListener('click', _saveHistMemo);
     document.getElementById('btn-hist-delete').addEventListener('click', _deleteHistItem);
     document.getElementById('btn-close-history-modal').addEventListener('click', () => {
