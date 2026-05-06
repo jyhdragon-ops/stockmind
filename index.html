@@ -450,9 +450,9 @@
           <textarea id="disc-theme" placeholder="예: AI 반도체, 2차전지, 방산주, 실적 개선 기대 종목..." rows="3"></textarea>
         </div>
         <div class="form-group">
-          <label>관심 종목명 <span style="font-size:11px;color:var(--sub);font-weight:400">선택 — 비워두면 AI가 테마에서 자동 선정</span></label>
+          <label>관심 종목명 <span style="font-size:11px;color:var(--sub);font-weight:400">선택 — 🔍로 코드 조회 후 분석, 미입력 시 AI가 테마에서 자동 선정</span></label>
           <div style="display:flex;gap:8px">
-            <input type="text" id="disc-name" placeholder="예: 삼성전자 (비워두면 AI 자동 선정)" style="flex:1" />
+            <input type="text" id="disc-name" placeholder="예: 삼성전자 — Enter 또는 🔍로 코드 조회" style="flex:1" />
             <button type="button" class="btn btn-secondary" id="btn-lookup-disc" style="flex-shrink:0;padding:10px 14px">🔍</button>
           </div>
           <div id="disc-lookup-msg" style="font-size:12px;margin-top:4px;min-height:16px"></div>
@@ -1583,6 +1583,7 @@ const ui = (() => {
         .forEach(id => { document.getElementById(id).value = ''; });
       document.getElementById('add-stock-form').style.display = 'none';
       _renderPortfolio();
+      _msg('pf-msg', `✓ ${name} (${code}) 추가 완료`, 'success');
     } catch (err) {
       _msg('add-msg', '추가 실패: ' + err.message, 'error');
       console.error('[pf-add]', err);
@@ -1896,6 +1897,7 @@ const ui = (() => {
         btn.disabled = true;
         btn.textContent = '검증 중...';
         try { await _runSingleVerify(Number(btn.dataset.verifyId)); }
+        catch { /* _runSingleVerify에서 이미 표시됨 */ }
         finally { btn.disabled = false; btn.textContent = '검증 실행'; }
       })
     );
@@ -2006,6 +2008,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     } catch (err) {
       _msg('verify-run-msg', `${item.stock_name} 검증 실패: ` + err.message, 'error');
       console.error('[verify-run]', err);
+      throw err;
     }
   }
 
