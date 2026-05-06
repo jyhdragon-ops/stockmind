@@ -664,6 +664,14 @@
           <label>API 키 3 <span style="opacity:.6;font-weight:400">(백업, 선택 — 한도 초과 시 자동 전환)</span></label>
           <input type="password" id="gemini-api-key-3" placeholder="AIza..." autocomplete="off" />
         </div>
+        <div class="form-group">
+          <label>모델 선택 <span style="opacity:.6;font-weight:400">(구형 모델일수록 무료 한도 여유)</span></label>
+          <select id="gemini-model">
+            <option value="gemini-2.5-flash">gemini-2.5-flash (최신, 최고 품질)</option>
+            <option value="gemini-2.0-flash">gemini-2.0-flash (빠름, 한도 여유)</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash (구형, 한도 가장 여유)</option>
+          </select>
+        </div>
       </div>
 
       <div class="card">
@@ -756,7 +764,7 @@ const KIS_RATE_LIMIT_MS = 700; // KIS API 초당 호출 한도 방지
 // ============================================================
 const dbService = (() => {
   const DB_NAME = 'stockmind_db';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let _db = null;
 
   async function _open() {
@@ -769,6 +777,8 @@ const dbService = (() => {
         for (const name of ['portfolio', 'analysis_history', 'verification'])
           if (!d.objectStoreNames.contains(name))
             d.createObjectStore(name, { keyPath: 'id', autoIncrement: true });
+        if (!d.objectStoreNames.contains('analysis_cache'))
+          d.createObjectStore('analysis_cache', { keyPath: 'id' });
       };
       req.onsuccess = ({ target: { result } }) => { _db = result; resolve(_db); };
       req.onerror   = () => reject(req.error);
@@ -941,15 +951,21 @@ const stockDataService = (() => {
 // aiService — Gemini API 단일 진입점
 // ============================================================
 const aiService = (() => {
+  let _model = 'gemini-2.5-flash';
+  function setModel(m) { _model = m || 'gemini-2.5-flash'; }
+
   async function callAI(systemPrompt, userMessage, apiKey) {
+    const genConfig = { maxOutputTokens: 2000 };
+    if (_model.includes('2.5')) genConfig.thinkingConfig = { thinkingBudget: 0 };
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${_model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+          generationConfig: genConfig,
         }),
       }
     );
@@ -972,13 +988,19 @@ const aiService = (() => {
     }
     throw lastErr || new Error('QUOTA_EXCEEDED');
   }
-  return { callAI, callAIWithFallback };
+  return { callAI, callAIWithFallback, setModel };
 })();
 
 // ============================================================
 // analysisTeam — 데이터 수집 → AI 호출 오케스트레이션
 // ============================================================
 const analysisTeam = (() => {
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+  function _trim(text, n = 800) {
+    if (!text || text.length <= n) return text;
+    return text.slice(0, n) + '…';
+  }
 
   const P = {
     selector: (theme, period, style) =>
@@ -1015,9 +1037,19 @@ const analysisTeam = (() => {
     };
   }
 
-  async function runDiscovery({ ticker, market, stockName, theme, period, riskStyle, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+  async function runDiscovery({ ticker, market, stockName, theme, period, riskStyle, model, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    aiService.setModel(model);
     let ctx = '', priceData = null, chartData = null;
     let selTicker = ticker, selMarket = market, selName = stockName;
+
+    if (selTicker) {
+      const cacheKey = `disc_${selTicker}_${period}_${riskStyle}`;
+      const cached = await dbService.get('analysis_cache', cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+        for (let i = 0; i < 8; i++) onProgress(i, '', 'done');
+        return { ...cached.data, fromCache: true, cacheAge: Math.round((Date.now() - cached.timestamp) / 3600000) };
+      }
+    }
 
     // 단계 0: 종목 선정 (ticker 없을 때 AI가 자동 선정)
     if (!selTicker) {
@@ -1061,19 +1093,19 @@ const analysisTeam = (() => {
     onProgress(2, '팀원1 완료', 'done');
 
     onProgress(3, '팀원2 기술적 분석 중...');
-    const r2 = await aiService.callAIWithFallback(P.m2(riskStyle, period), ctx + `팀원1:\n${r1}`, apiKey);
+    const r2 = await aiService.callAIWithFallback(P.m2(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}`, apiKey);
     onProgress(3, '팀원2 완료', 'done');
 
     onProgress(4, '팀원3 재무 분석 중...');
-    const r3 = await aiService.callAIWithFallback(P.m3(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    const r3 = await aiService.callAIWithFallback(P.m3(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}`, apiKey);
     onProgress(4, '팀원3 완료', 'done');
 
     onProgress(5, '팀원4 매매전략 수립 중...');
-    const r4 = await aiService.callAIWithFallback(P.m4(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    const r4 = await aiService.callAIWithFallback(P.m4(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}\n\n팀원3:\n${_trim(r3)}`, apiKey);
     onProgress(5, '팀원4 완료', 'done');
 
     onProgress(6, '팀원6 리스크 검토 중...');
-    const r6 = await aiService.callAIWithFallback(P.m6(), `${ctx}팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}\n\n팀원4:\n${r4}`, apiKey);
+    const r6 = await aiService.callAIWithFallback(P.m6(), `${ctx}팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}\n\n팀원3:\n${_trim(r3)}\n\n팀원4:\n${_trim(r4)}`, apiKey);
     onProgress(6, '팀원6 완료', 'done');
 
     const m6Eliminated = /최종 판정[^\n]*탈락/.test(r6);
@@ -1086,11 +1118,20 @@ const analysisTeam = (() => {
     onProgress(7, '분석 완료', 'done');
 
     const eliminated = /\*\*추천 여부\*\*[^\n]*비추천/.test(rL);
-    return { report: rL, member4Output: r4, eliminated, priceData, chartData,
-             ticker: selTicker, market: selMarket, stockName: selName };
+    const resultData = { report: rL, member4Output: r4, eliminated, priceData, chartData,
+                         ticker: selTicker, market: selMarket, stockName: selName };
+    if (selTicker) {
+      await dbService.put('analysis_cache', {
+        id: `disc_${selTicker}_${period}_${riskStyle}`,
+        timestamp: Date.now(),
+        data: resultData,
+      });
+    }
+    return resultData;
   }
 
-  async function runResponse({ ticker, market, stockName, avgPrice, totalQty, pnlRate, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+  async function runResponse({ ticker, market, stockName, avgPrice, totalQty, pnlRate, model, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    aiService.setModel(model);
     onProgress(0, '실시간 데이터 수집 중...');
     const token = await stockDataService.getToken(appkey, appsecret, proxyUrl);
     const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
@@ -1106,15 +1147,15 @@ const analysisTeam = (() => {
     onProgress(1, '팀원1 완료', 'done');
 
     onProgress(2, '팀원2 기술적 분석 중...');
-    const r2 = await aiService.callAIWithFallback(P.m2('중립형', '보유중'), ctx + `팀원1:\n${r1}`, apiKey);
+    const r2 = await aiService.callAIWithFallback(P.m2('중립형', '보유중'), ctx + `팀원1:\n${_trim(r1)}`, apiKey);
     onProgress(2, '팀원2 완료', 'done');
 
     onProgress(3, '팀원3 재무 분석 중...');
-    const r3 = await aiService.callAIWithFallback(P.m3('중립형', '보유중'), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    const r3 = await aiService.callAIWithFallback(P.m3('중립형', '보유중'), ctx + `팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}`, apiKey);
     onProgress(3, '팀원3 완료', 'done');
 
     onProgress(4, '팀원4 매매전략 수립 중...');
-    const r4 = await aiService.callAIWithFallback(P.m4('중립형', '보유중'), ctx + `${holding}\n\n팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    const r4 = await aiService.callAIWithFallback(P.m4('중립형', '보유중'), ctx + `${holding}\n\n팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}\n\n팀원3:\n${_trim(r3)}`, apiKey);
     onProgress(4, '팀원4 완료', 'done');
 
     onProgress(5, '팀원5 대응방안 작성 중...');
@@ -1124,7 +1165,16 @@ const analysisTeam = (() => {
     return { report: r5, priceData, chartData };
   }
 
-  async function runAnalysis({ ticker, market, stockName, period, riskStyle, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+  async function runAnalysis({ ticker, market, stockName, period, riskStyle, model, apiKey, appkey, appsecret, proxyUrl, onProgress }) {
+    aiService.setModel(model);
+
+    const cacheKey = `analyze_${ticker}_${period}_${riskStyle}`;
+    const cached = await dbService.get('analysis_cache', cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+      for (let i = 0; i < 6; i++) onProgress(i, '', 'done');
+      return { ...cached.data, fromCache: true, cacheAge: Math.round((Date.now() - cached.timestamp) / 3600000) };
+    }
+
     onProgress(0, '실시간 데이터 수집 중...');
     const token     = await stockDataService.getToken(appkey, appsecret, proxyUrl);
     const priceData = await stockDataService.getCurrentPrice(ticker, market, token, appkey, appsecret, proxyUrl);
@@ -1140,15 +1190,15 @@ const analysisTeam = (() => {
     onProgress(1, '팀원1 완료', 'done');
 
     onProgress(2, '팀원2 기술적 분석 중...');
-    const r2 = await aiService.callAIWithFallback(P.m2(riskStyle, period), ctx + `팀원1:\n${r1}`, apiKey);
+    const r2 = await aiService.callAIWithFallback(P.m2(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}`, apiKey);
     onProgress(2, '팀원2 완료', 'done');
 
     onProgress(3, '팀원3 재무 분석 중...');
-    const r3 = await aiService.callAIWithFallback(P.m3(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}`, apiKey);
+    const r3 = await aiService.callAIWithFallback(P.m3(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}`, apiKey);
     onProgress(3, '팀원3 완료', 'done');
 
     onProgress(4, '팀원4 매매전략 수립 중...');
-    const r4 = await aiService.callAIWithFallback(P.m4(riskStyle, period), ctx + `팀원1:\n${r1}\n\n팀원2:\n${r2}\n\n팀원3:\n${r3}`, apiKey);
+    const r4 = await aiService.callAIWithFallback(P.m4(riskStyle, period), ctx + `팀원1:\n${_trim(r1)}\n\n팀원2:\n${_trim(r2)}\n\n팀원3:\n${_trim(r3)}`, apiKey);
     onProgress(4, '팀원4 완료', 'done');
 
     onProgress(5, '팀장 최종 분석 중...');
@@ -1159,7 +1209,9 @@ const analysisTeam = (() => {
     );
     onProgress(5, '분석 완료', 'done');
 
-    return { report: rL, member4Output: r4, priceData, chartData, ticker, market, stockName };
+    const resultData = { report: rL, member4Output: r4, priceData, chartData, ticker, market, stockName };
+    await dbService.put('analysis_cache', { id: cacheKey, timestamp: Date.now(), data: resultData });
+    return resultData;
   }
 
   return { runDiscovery, runResponse, runAnalysis, parseRecData };
@@ -1246,7 +1298,7 @@ const ui = (() => {
   }
 
   async function _loadSettings() {
-    const [g, g2, g3, k, s, p, style] = await Promise.all([
+    const [g, g2, g3, k, s, p, style, gModel] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
@@ -1254,10 +1306,12 @@ const ui = (() => {
       dbService.getSetting('kis_app_secret'),
       dbService.getSetting('proxy_url'),
       dbService.getSetting('invest_style'),
+      dbService.getSetting('gemini_model'),
     ]);
-    if (g)     document.getElementById('gemini-api-key').value   = g;
-    if (g2)    document.getElementById('gemini-api-key-2').value = g2;
-    if (g3)    document.getElementById('gemini-api-key-3').value = g3;
+    if (g)      document.getElementById('gemini-api-key').value   = g;
+    if (g2)     document.getElementById('gemini-api-key-2').value = g2;
+    if (g3)     document.getElementById('gemini-api-key-3').value = g3;
+    if (gModel) document.getElementById('gemini-model').value     = gModel;
     if (k)     document.getElementById('kis-app-key').value      = k;
     if (s)     document.getElementById('kis-app-secret').value   = s;
     if (p)     document.getElementById('proxy-url').value        = p;
@@ -1277,6 +1331,7 @@ const ui = (() => {
         dbService.putSetting('kis_app_secret',   document.getElementById('kis-app-secret').value.trim()),
         dbService.putSetting('proxy_url',        document.getElementById('proxy-url').value.trim()),
         dbService.putSetting('invest_style',     document.getElementById('invest-style').value),
+        dbService.putSetting('gemini_model',     document.getElementById('gemini-model').value),
       ]);
       _msg('save-msg', '✓ 설정이 저장되었습니다.', 'success');
       await _checkSetup();
@@ -1736,12 +1791,14 @@ const ui = (() => {
   }
 
   async function _getDashBriefing() {
-    const [geminiKey, geminiKey2, geminiKey3] = await Promise.all([
+    const [geminiKey, geminiKey2, geminiKey3, geminiModel] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
+      dbService.getSetting('gemini_model'),
     ]);
     if (!geminiKey) { alert('Gemini API 키를 먼저 설정해주세요. (설정 탭)'); return; }
+    aiService.setModel(geminiModel);
 
     const btn = document.getElementById('btn-dash-briefing');
     btn.disabled = true; btn.textContent = '분석 중...';
@@ -1907,14 +1964,16 @@ const ui = (() => {
     const item = _verifyItems.find(i => i.id === id);
     if (!item) return;
 
-    const [appkey, appsecret, proxyUrl, geminiKey, geminiKey2, geminiKey3] = await Promise.all([
+    const [appkey, appsecret, proxyUrl, geminiKey, geminiKey2, geminiKey3, geminiModel] = await Promise.all([
       dbService.getSetting('kis_app_key'),
       dbService.getSetting('kis_app_secret'),
       dbService.getSetting('proxy_url'),
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
+      dbService.getSetting('gemini_model'),
     ]);
+    aiService.setModel(geminiModel);
 
     _msg('verify-run-msg', `${item.stock_name} 검증 중...`, 'info');
 
@@ -2229,10 +2288,11 @@ ${prevHistory || '없음 (첫 검증)'}`;
     if (!theme) { _msg('disc-msg', '테마/키워드를 입력하세요.', 'error'); return; }
     if (_discAnalyzing) { _msg('disc-msg', '현재 종목 발굴이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
 
-    const [geminiKey, geminiKey2, geminiKey3] = await Promise.all([
+    const [geminiKey, geminiKey2, geminiKey3, geminiModel] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
+      dbService.getSetting('gemini_model'),
     ]);
     if (!geminiKey) { _msg('disc-msg', 'Gemini API 키를 설정해주세요. (설정 탭)', 'error'); return; }
 
@@ -2254,7 +2314,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     try {
       const result = await analysisTeam.runDiscovery({
         ticker, market, stockName, theme, period, riskStyle: risk,
-        apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
+        model: geminiModel, apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
         onProgress: (idx, _label, state = 'active') => {
           _discStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
           _renderSteps('disc-steps', DISC_LABELS, _discStepState);
@@ -2265,7 +2325,11 @@ ${prevHistory || '없음 (첫 검증)'}`;
       recData.market = result.market;
       _discResult = { ...result, recData };
 
-      await dbService.put('analysis_history', {
+      if (result.fromCache) {
+        _msg('disc-msg', `캐시된 분석 결과입니다 (${result.cacheAge}시간 전 — 새로 분석하려면 다시 실행)`, 'info');
+      }
+
+      if (!result.fromCache) await dbService.put('analysis_history', {
         type: '종목발굴', target: result.stockName || result.ticker || theme,
         summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
         full_report: result.report,
@@ -2324,10 +2388,11 @@ ${prevHistory || '없음 (첫 검증)'}`;
     if (!ticker) { _msg('analyze-msg', '종목명을 입력하고 🔍 버튼으로 코드를 조회하세요.', 'error'); return; }
     if (_runAnalyzing) { _msg('analyze-msg', '현재 분석이 진행 중입니다. 완료 후 다시 시도해주세요.', 'info'); return; }
 
-    const [geminiKey, geminiKey2, geminiKey3] = await Promise.all([
+    const [geminiKey, geminiKey2, geminiKey3, geminiModel] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
+      dbService.getSetting('gemini_model'),
     ]);
     if (!geminiKey) { _msg('analyze-msg', 'Gemini API 키를 설정해주세요. (설정 탭)', 'error'); return; }
 
@@ -2352,7 +2417,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
     try {
       const result = await analysisTeam.runAnalysis({
         ticker, market, stockName: name, period, riskStyle: risk,
-        apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
+        model: geminiModel, apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
         onProgress: (idx, _label, state = 'active') => {
           _analyzeStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
           _renderSteps('analyze-steps', ANALYZE_LABELS, _analyzeStepState);
@@ -2363,7 +2428,11 @@ ${prevHistory || '없음 (첫 검증)'}`;
       recData.market = market;
       _analyzeResult = { ...result, recData };
 
-      await dbService.put('analysis_history', {
+      if (result.fromCache) {
+        _msg('analyze-msg', `캐시된 분석 결과입니다 (${result.cacheAge}시간 전 — 새로 분석하려면 다시 실행)`, 'info');
+      }
+
+      if (!result.fromCache) await dbService.put('analysis_history', {
         type: '종목분석', target: name || ticker,
         summary: result.report.replace(/[#*\n`]/g, ' ').trim().slice(0, 100),
         full_report: result.report,
@@ -2482,10 +2551,11 @@ ${prevHistory || '없음 (첫 검증)'}`;
     const group = _pfGrouped().find(g => g.key === key);
     if (!group) return;
 
-    const [geminiKey, geminiKey2, geminiKey3, appkey, appsecret, proxyUrl] = await Promise.all([
+    const [geminiKey, geminiKey2, geminiKey3, geminiModel, appkey, appsecret, proxyUrl] = await Promise.all([
       dbService.getSetting('gemini_api_key'),
       dbService.getSetting('gemini_api_key_2'),
       dbService.getSetting('gemini_api_key_3'),
+      dbService.getSetting('gemini_model'),
       dbService.getSetting('kis_app_key'),
       dbService.getSetting('kis_app_secret'),
       dbService.getSetting('proxy_url'),
@@ -2509,7 +2579,7 @@ ${prevHistory || '없음 (첫 검증)'}`;
       const result = await analysisTeam.runResponse({
         ticker: group.code, market: group.market,
         stockName: group.name, avgPrice, totalQty, pnlRate,
-        apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
+        model: geminiModel, apiKey: [geminiKey, geminiKey2, geminiKey3], appkey, appsecret, proxyUrl,
         onProgress: (idx, _label, state = 'active') => {
           _respStepState[idx] = (state === 'done' || state === 'error') ? state : 'active';
           _renderSteps('response-modal-steps', RESP_LABELS, _respStepState);
