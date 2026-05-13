@@ -667,8 +667,8 @@
         <div class="form-group">
           <label>모델 선택 <span style="opacity:.6;font-weight:400">(구형 모델일수록 무료 한도 여유)</span></label>
           <select id="gemini-model">
+            <option value="gemini-2.0-flash" selected>gemini-2.0-flash (기본, 한도 여유)</option>
             <option value="gemini-2.5-flash">gemini-2.5-flash (최신, 최고 품질)</option>
-            <option value="gemini-2.0-flash">gemini-2.0-flash (빠름, 한도 여유)</option>
             <option value="gemini-1.5-flash">gemini-1.5-flash (구형, 한도 가장 여유)</option>
           </select>
         </div>
@@ -951,12 +951,11 @@ const stockDataService = (() => {
 // aiService — Gemini API 단일 진입점
 // ============================================================
 const aiService = (() => {
-  let _model = 'gemini-2.5-flash';
-  function setModel(m) { _model = m || 'gemini-2.5-flash'; }
+  let _model = 'gemini-2.0-flash';
+  function setModel(m) { _model = m || 'gemini-2.0-flash'; }
 
   async function callAI(systemPrompt, userMessage, apiKey) {
     const genConfig = { maxOutputTokens: 2000 };
-    if (_model.includes('2.5')) genConfig.thinkingConfig = { thinkingBudget: 0 };
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${_model}:generateContent?key=${apiKey}`,
       {
